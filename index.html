@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>单词本工作台</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap');
+    body { font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .fade-in { animation: fadeIn 0.2s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            listening: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb' },
+            reading: { 50: '#f0fdf4', 100: '#dcfce7', 500: '#22c55e', 600: '#16a34a' },
+            extracurricular: { 50: '#faf5ff', 100: '#f3e8ff', 500: '#a855f7', 600: '#9333ea' },
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+  <div id="app" class="max-w-5xl mx-auto min-h-screen flex flex-col md:flex-row">
+    <!-- Sidebar / Category -->
+    <aside class="bg-white border-b md:border-b-0 md:border-r border-gray-200 md:w-64 flex-shrink-0">
+      <div class="p-4 md:p-6">
+        <div class="flex items-center gap-2 mb-6">
+          <i data-lucide="book-open" class="w-6 h-6 text-indigo-600"></i>
+          <h1 class="text-xl font-bold text-gray-900">单词本</h1>
+        </div>
+
+        <div class="space-y-1 mb-6">
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-2">分类</p>
+          <button onclick="app.setCategory('all')" id="cat-all" class="cat-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-left">
+            <i data-lucide="layers" class="w-4 h-4"></i>
+            <span>全部</span>
+            <span id="count-all" class="ml-auto text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">0</span>
+          </button>
+          <button onclick="app.setCategory('listening')" id="cat-listening" class="cat-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-left">
+            <i data-lucide="headphones" class="w-4 h-4"></i>
+            <span>听力</span>
+            <span id="count-listening" class="ml-auto text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">0</span>
+          </button>
+          <button onclick="app.setCategory('reading')" id="cat-reading" class="cat-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-left">
+            <i data-lucide="glasses" class="w-4 h-4"></i>
+            <span>阅读</span>
+            <span id="count-reading" class="ml-auto text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">0</span>
+          </button>
+          <button onclick="app.setCategory('extracurricular')" id="cat-extracurricular" class="cat-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-left">
+            <i data-lucide="sparkles" class="w-4 h-4"></i>
+            <span>课外</span>
+            <span id="count-extracurricular" class="ml-auto text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">0</span>
+          </button>
+        </div>
+
+        <div class="space-y-1">
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-2">数据</p>
+          <button onclick="app.exportData()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors text-left">
+            <i data-lucide="download" class="w-4 h-4"></i>
+            <span>导出 JSON</span>
+          </button>
+          <label class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors text-left cursor-pointer">
+            <i data-lucide="upload" class="w-4 h-4"></i>
+            <span>导入 JSON</span>
+            <input type="file" accept=".json" class="hidden" onchange="app.importData(this)">
+          </label>
+          <button onclick="app.loadSampleData()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors text-left">
+            <i data-lucide="sparkles" class="w-4 h-4"></i>
+            <span>加载示例</span>
+          </button>
+          <button onclick="app.resetData()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 transition-colors text-left">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+            <span>清空数据</span>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1 flex flex-col min-h-0">
+      <!-- Header -->
+      <header class="bg-white border-b border-gray-200 px-4 md:px-6 py-4 sticky top-0 z-10">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 id="page-title" class="text-lg font-bold text-gray-900">全部单词</h2>
+            <p id="page-subtitle" class="text-sm text-gray-500 mt-0.5">按日期自动分组</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="relative">
+              <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <input type="text" id="search-input" placeholder="搜索单词或释义..." oninput="app.setSearch(this.value)"
+                class="pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full md:w-56">
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Add Word Form -->
+      <div class="bg-white border-b border-gray-200 px-4 md:px-6 py-4">
+        <form id="add-form" onsubmit="app.addWord(event)" class="flex flex-col md:flex-row gap-3 items-start">
+          <div class="flex-1 grid grid-cols-1 md:grid-cols-12 gap-3 w-full">
+            <div class="md:col-span-3">
+              <input type="text" id="input-word" required placeholder="单词 / 短语" autocomplete="off"
+                class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div class="md:col-span-4">
+              <input type="text" id="input-meaning" required placeholder="释义" autocomplete="off"
+                class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div class="md:col-span-3">
+              <input type="text" id="input-note" placeholder="备注 / 例句（可选）" autocomplete="off"
+                class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div class="md:col-span-2">
+              <input type="date" id="input-date" required
+                class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+          </div>
+          <button type="submit"
+            class="w-full md:w-auto px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span>添加</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Word List -->
+      <div id="word-list" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+        <!-- Rendered by JS -->
+      </div>
+    </main>
+  </div>
+
+  <!-- Edit Modal -->
+  <div id="edit-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <h3 class="font-bold text-gray-900">编辑单词</h3>
+        <button onclick="app.closeEditModal()" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <form onsubmit="app.saveEdit(event)" class="p-5 space-y-3">
+        <input type="hidden" id="edit-id">
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">分类</label>
+          <select id="edit-category" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="listening">听力</option>
+            <option value="reading">阅读</option>
+            <option value="extracurricular">课外</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">单词</label>
+          <input type="text" id="edit-word" required class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">释义</label>
+          <input type="text" id="edit-meaning" required class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">备注</label>
+          <input type="text" id="edit-note" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">日期</label>
+          <input type="date" id="edit-date" required class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div class="pt-2 flex gap-2">
+          <button type="button" onclick="app.deleteCurrentWord()" class="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg">删除</button>
+          <button type="submit" class="flex-1 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'wordbook_v1';
+    const CATEGORIES = {
+      listening: { name: '听力', color: 'listening', icon: 'headphones' },
+      reading: { name: '阅读', color: 'reading', icon: 'glasses' },
+      extracurricular: { name: '课外', color: 'extracurricular', icon: 'sparkles' }
+    };
+
+    const DEFAULT_WORDS = [
+      { id: '1', word: 'marginalize', meaning: '边缘化', note: '', category: 'extracurricular', date: '2026-08-05', createdAt: '2026-08-05T00:00:00.000Z', mastered: false },
+      { id: '2', word: 'low-cost', meaning: '低成本', note: '', category: 'extracurricular', date: '2026-08-05', createdAt: '2026-08-05T00:00:01.000Z', mastered: false },
+      { id: '3', word: 'e-commerce', meaning: '电商', note: 'e-commerce economy 电商经济', category: 'extracurricular', date: '2026-08-05', createdAt: '2026-08-05T00:00:02.000Z', mastered: false },
+      { id: '4', word: 'bouquet', meaning: '花束', note: '', category: 'extracurricular', date: '2026-08-05', createdAt: '2026-08-05T00:00:03.000Z', mastered: false },
+      { id: '5', word: 'logistical', meaning: '后勤的', note: '', category: 'extracurricular', date: '2026-08-05', createdAt: '2026-08-05T00:00:04.000Z', mastered: false },
+      { id: '6', word: 'perishable', meaning: '容易枯萎的', note: '', category: 'extracurricular', date: '2026-08-05', createdAt: '2026-08-05T00:00:05.000Z', mastered: false },
+      { id: '7', word: 'moist', meaning: '潮湿的', note: 'moisture 潮气、水气', category: 'extracurricular', date: '2026-08-05', createdAt: '2026-08-05T00:00:06.000Z', mastered: false },
+      { id: '8', word: 'interprovincial', meaning: '跨省的', note: '', category: 'extracurricular', date: '2026-08-05', createdAt: '2026-08-05T00:00:07.000Z', mastered: false }
+    ];
+
+    function generateId() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    }
+
+    function formatDate(dateStr) {
+      const d = new Date(dateStr + 'T00:00:00');
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const diff = Math.round((today - d) / 86400000);
+      let label = '';
+      if (diff === 0) label = '今天';
+      else if (diff === 1) label = '昨天';
+      else if (diff === -1) label = '明天';
+      else label = ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
+      return `${d.getMonth() + 1}月${d.getDate()}日 · ${label}`;
+    }
+
+    class WordBookApp {
+      constructor() {
+        this.state = {
+          category: 'all',
+          search: '',
+          words: []
+        };
+        this.loadData();
+        this.init();
+      }
+
+      init() {
+        document.getElementById('input-date').valueAsDate = new Date();
+        this.renderCategories();
+        this.render();
+        lucide.createIcons();
+      }
+
+      loadData() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            this.state.words = JSON.parse(raw);
+          } else {
+            this.state.words = [...DEFAULT_WORDS];
+            this.saveData();
+          }
+        } catch (e) {
+          this.state.words = [...DEFAULT_WORDS];
+        }
+      }
+
+      saveData() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state.words));
+      }
+
+      setCategory(cat) {
+        this.state.category = cat;
+        this.renderCategories();
+        this.render();
+      }
+
+      setSearch(val) {
+        this.state.search = val.trim().toLowerCase();
+        this.render();
+      }
+
+      getFilteredWords() {
+        return this.state.words.filter(w => {
+          const catMatch = this.state.category === 'all' || w.category === this.state.category;
+          const searchMatch = !this.state.search ||
+            w.word.toLowerCase().includes(this.state.search) ||
+            w.meaning.toLowerCase().includes(this.state.search) ||
+            (w.note && w.note.toLowerCase().includes(this.state.search));
+          return catMatch && searchMatch;
+        }).sort((a, b) => new Date(b.date) - new Date(a.date) || new Date(b.createdAt) - new Date(a.createdAt));
+      }
+
+      groupByDate(words) {
+        const groups = {};
+        words.forEach(w => {
+          if (!groups[w.date]) groups[w.date] = [];
+          groups[w.date].push(w);
+        });
+        return Object.entries(groups).sort((a, b) => new Date(b[0]) - new Date(a[0]));
+      }
+
+      renderCategories() {
+        const counts = { all: this.state.words.length };
+        Object.keys(CATEGORIES).forEach(c => counts[c] = this.state.words.filter(w => w.category === c).length);
+
+        Object.keys(CATEGORIES).forEach(cat => {
+          document.getElementById(`count-${cat}`).textContent = counts[cat];
+        });
+        document.getElementById('count-all').textContent = counts.all;
+
+        document.querySelectorAll('.cat-btn').forEach(btn => {
+          btn.className = 'cat-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-left text-gray-600 hover:bg-gray-50';
+        });
+
+        const active = document.getElementById(`cat-${this.state.category}`);
+        if (active) {
+          active.className = 'cat-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-left bg-indigo-50 text-indigo-700';
+        }
+
+        const catInfo = CATEGORIES[this.state.category];
+        document.getElementById('page-title').textContent = this.state.category === 'all' ? '全部单词' : `${catInfo.name}单词`;
+      }
+
+      render() {
+        const filtered = this.getFilteredWords();
+        const container = document.getElementById('word-list');
+
+        if (filtered.length === 0) {
+          container.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-16 text-gray-400 fade-in">
+              <i data-lucide="book-x" class="w-12 h-12 mb-3 text-gray-300"></i>
+              <p class="text-sm">暂无单词，添加一个吧</p>
+            </div>
+          `;
+          lucide.createIcons();
+          return;
+        }
+
+        const groups = this.groupByDate(filtered);
+        container.innerHTML = groups.map(([date, words]) => `
+          <div class="fade-in">
+            <div class="flex items-center gap-3 mb-3">
+              <h3 class="text-sm font-bold text-gray-700">${formatDate(date)}</h3>
+              <div class="flex-1 h-px bg-gray-200"></div>
+              <span class="text-xs text-gray-400">${words.length} 个</span>
+            </div>
+            <div class="grid grid-cols-1 gap-2">
+              ${words.map(w => this.renderWordCard(w)).join('')}
+            </div>
+          </div>
+        `).join('');
+        lucide.createIcons();
+      }
+
+      renderWordCard(w) {
+        const cat = CATEGORIES[w.category];
+        return `
+          <div onclick="app.openEdit('${w.id}')" class="group bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md hover:border-indigo-200 transition-all cursor-pointer">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-base font-bold text-gray-900">${this.escapeHtml(w.word)}</span>
+                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-${cat.color}-50 text-${cat.color}-600">
+                    <i data-lucide="${cat.icon}" class="w-3 h-3"></i>
+                    ${cat.name}
+                  </span>
+                  ${w.mastered ? '<span class="px-2 py-0.5 rounded-md text-xs font-medium bg-green-50 text-green-600">已掌握</span>' : ''}
+                </div>
+                <p class="text-sm text-gray-700">${this.escapeHtml(w.meaning)}</p>
+                ${w.note ? `<p class="text-xs text-gray-500 mt-1.5 line-clamp-2">${this.escapeHtml(w.note)}</p>` : ''}
+              </div>
+              <div class="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity md:opacity-0 opacity-100">
+                <button type="button" onclick="event.stopPropagation(); app.toggleMastered('${w.id}')" class="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg" title="标记掌握">
+                  <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      addWord(e) {
+        e.preventDefault();
+        const word = document.getElementById('input-word').value.trim();
+        const meaning = document.getElementById('input-meaning').value.trim();
+        const note = document.getElementById('input-note').value.trim();
+        const date = document.getElementById('input-date').value;
+        const category = this.state.category === 'all' ? 'extracurricular' : this.state.category;
+
+        if (!word || !meaning || !date) return;
+
+        this.state.words.unshift({
+          id: generateId(),
+          word,
+          meaning,
+          note,
+          category,
+          date,
+          createdAt: new Date().toISOString(),
+          mastered: false
+        });
+
+        this.saveData();
+        document.getElementById('input-word').value = '';
+        document.getElementById('input-meaning').value = '';
+        document.getElementById('input-note').value = '';
+        this.renderCategories();
+        this.render();
+      }
+
+      toggleMastered(id) {
+        const w = this.state.words.find(x => x.id === id);
+        if (w) {
+          w.mastered = !w.mastered;
+          this.saveData();
+          this.render();
+        }
+      }
+
+      openEdit(id) {
+        const w = this.state.words.find(x => x.id === id);
+        if (!w) return;
+        this.editingId = id;
+        document.getElementById('edit-id').value = id;
+        document.getElementById('edit-category').value = w.category;
+        document.getElementById('edit-word').value = w.word;
+        document.getElementById('edit-meaning').value = w.meaning;
+        document.getElementById('edit-note').value = w.note || '';
+        document.getElementById('edit-date').value = w.date;
+        document.getElementById('edit-modal').classList.remove('hidden');
+        document.getElementById('edit-modal').classList.add('flex');
+        lucide.createIcons();
+      }
+
+      closeEditModal() {
+        document.getElementById('edit-modal').classList.add('hidden');
+        document.getElementById('edit-modal').classList.remove('flex');
+        this.editingId = null;
+      }
+
+      saveEdit(e) {
+        e.preventDefault();
+        const w = this.state.words.find(x => x.id === this.editingId);
+        if (!w) return;
+        w.category = document.getElementById('edit-category').value;
+        w.word = document.getElementById('edit-word').value.trim();
+        w.meaning = document.getElementById('edit-meaning').value.trim();
+        w.note = document.getElementById('edit-note').value.trim();
+        w.date = document.getElementById('edit-date').value;
+        this.saveData();
+        this.closeEditModal();
+        this.renderCategories();
+        this.render();
+      }
+
+      deleteCurrentWord() {
+        if (!confirm('确定删除这个单词吗？')) return;
+        this.state.words = this.state.words.filter(x => x.id !== this.editingId);
+        this.saveData();
+        this.closeEditModal();
+        this.renderCategories();
+        this.render();
+      }
+
+      exportData() {
+        const data = JSON.stringify(this.state.words, null, 2);
+        const blob = new Blob([data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const dateStr = new Date().toISOString().slice(0, 10);
+        a.href = url;
+        a.download = `单词本-${dateStr}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      importData(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const imported = JSON.parse(e.target.result);
+            if (!Array.isArray(imported)) throw new Error('格式错误');
+            this.state.words = imported;
+            this.saveData();
+            this.renderCategories();
+            this.render();
+            alert('导入成功');
+          } catch (err) {
+            alert('导入失败：' + err.message);
+          }
+        };
+        reader.readAsText(file);
+        input.value = '';
+      }
+
+      loadSampleData() {
+        if (this.state.words.length > 0 && !confirm('加载示例数据会追加到现有数据之后，继续吗？')) return;
+        this.state.words = [...this.state.words, ...DEFAULT_WORDS];
+        this.saveData();
+        this.renderCategories();
+        this.render();
+      }
+
+      resetData() {
+        if (!confirm('确定清空所有单词数据吗？此操作不可恢复。')) return;
+        this.state.words = [];
+        this.saveData();
+        this.renderCategories();
+        this.render();
+      }
+    }
+
+    const app = new WordBookApp();
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') app.closeEditModal();
+    });
+  </script>
+</body>
+</html>
