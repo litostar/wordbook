@@ -1,0 +1,12 @@
+<view class="container">
+  <block wx:if="{{webUrl}}">
+    <web-view src="{{webUrl}}"></web-view>
+  </block>
+  <block wx:else>
+    <view class="empty">
+      <text class="title">单词本</text>
+      <text class="desc">网页版部署后，配置 webUrl 即可在此查看。</text>
+      <text class="desc">路径：weapp/pages/index/index.js</text>
+    </view>
+  </block>
+</view>
