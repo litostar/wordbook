@@ -1,8 +1,8 @@
 Page({
   data: {
-    // 把网页部署到服务器后，把这里改成你的网页地址
-    // 注意：需要在小程序后台配置业务域名
-    webUrl: ''
+    // 网页已部署到 GitHub Pages
+    // 注意：需要在小程序后台配置业务域名 litostar.github.io
+    webUrl: 'https://litostar.github.io/wordbook/'
   },
 
   onLoad() {
