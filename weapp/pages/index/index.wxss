@@ -1,0 +1,29 @@
+.container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40rpx;
+  text-align: center;
+}
+
+.title {
+  font-size: 48rpx;
+  font-weight: bold;
+  color: #1f2937;
+  margin-bottom: 24rpx;
+}
+
+.desc {
+  font-size: 28rpx;
+  color: #6b7280;
+  line-height: 1.6;
+  margin-bottom: 12rpx;
+}
