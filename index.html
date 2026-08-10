@@ -23,6 +23,8 @@
             listening: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb' },
             reading: { 50: '#f0fdf4', 100: '#dcfce7', 500: '#22c55e', 600: '#16a34a' },
             extracurricular: { 50: '#faf5ff', 100: '#f3e8ff', 500: '#a855f7', 600: '#9333ea' },
+            writing: { 50: '#fffbeb', 100: '#fef3c7', 500: '#f59e0b', 600: '#d97706' },
+            speaking: { 50: '#fff1f2', 100: '#ffe4e6', 500: '#f43f5e', 600: '#e11d48' },
           }
         }
       }
@@ -60,6 +62,16 @@
             <i data-lucide="sparkles" class="w-4 h-4"></i>
             <span>课外</span>
             <span id="count-extracurricular" class="ml-auto text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">0</span>
+          </button>
+          <button onclick="app.setCategory('writing')" id="cat-writing" class="cat-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-left">
+            <i data-lucide="pencil" class="w-4 h-4"></i>
+            <span>写作</span>
+            <span id="count-writing" class="ml-auto text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">0</span>
+          </button>
+          <button onclick="app.setCategory('speaking')" id="cat-speaking" class="cat-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-left">
+            <i data-lucide="mic" class="w-4 h-4"></i>
+            <span>口语</span>
+            <span id="count-speaking" class="ml-auto text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">0</span>
           </button>
         </div>
 
@@ -144,6 +156,8 @@
                 <option value="listening">🎧 听力</option>
                 <option value="reading">📖 阅读</option>
                 <option value="extracurricular">📚 课外</option>
+                <option value="writing">✏️ 写作</option>
+                <option value="speaking">🎤 口语</option>
               </select>
             </div>
             <div class="md:col-span-2">
@@ -178,6 +192,8 @@
           <option value="listening">听力</option>
           <option value="reading">阅读</option>
           <option value="extracurricular">课外</option>
+          <option value="writing">写作</option>
+          <option value="speaking">口语</option>
         </select>
         <button onclick="app.batchMove()" class="px-3 py-1.5 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors">移动</button>
         <button onclick="app.batchExport()" class="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">导出选中</button>
@@ -202,6 +218,8 @@
             <option value="listening">听力</option>
             <option value="reading">阅读</option>
             <option value="extracurricular">课外</option>
+            <option value="writing">写作</option>
+            <option value="speaking">口语</option>
           </select>
         </div>
         <div>
@@ -243,6 +261,8 @@
               <option value="listening">听力</option>
               <option value="reading">阅读</option>
               <option value="extracurricular" selected>课外</option>
+              <option value="writing">写作</option>
+              <option value="speaking">口语</option>
             </select>
           </div>
           <div>
@@ -289,7 +309,9 @@ moist | 潮湿的 | moisture 潮气
     const CATEGORIES = {
       listening: { name: '听力', color: 'listening', icon: 'headphones' },
       reading: { name: '阅读', color: 'reading', icon: 'glasses' },
-      extracurricular: { name: '课外', color: 'extracurricular', icon: 'sparkles' }
+      extracurricular: { name: '课外', color: 'extracurricular', icon: 'sparkles' },
+      writing: { name: '写作', color: 'writing', icon: 'pencil' },
+      speaking: { name: '口语', color: 'speaking', icon: 'mic' }
     };
 
     const DEFAULT_WORDS = [
