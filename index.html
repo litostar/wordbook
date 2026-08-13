@@ -540,6 +540,7 @@ moist | 潮湿的 | moisture 潮气
         const toDo = selWords.filter(w => !this.recite.checked.has(w.index));
         const done = selWords.filter(w => this.recite.checked.has(w.index));
         const recalledCount = toDo.filter(w => this.recite.recalled.has(w.index)).length;
+        const allOpen = toDo.length > 0 && toDo.every(w => this.recite.reveal[w.index]);
 
         // 天数提示
         let dayHint = `今天：第 ${todayDay} 天 / 共 ${days} 天`;
@@ -614,7 +615,7 @@ moist | 潮湿的 | moisture 潮气
           <div class="fade-in">
             <div class="flex items-center justify-between mb-3">
               <h3 class="text-sm font-bold text-gray-700">第 ${selDay} 天 · 待背 ${toDo.length} 词${recalledCount ? ` · ${recalledCount} 个回撤` : ''}</h3>
-              <button onclick="app.toggleRevealAll()" class="text-xs text-indigo-600 hover:underline">${Object.keys(this.recite.reveal).length ? '收起全部释义' : '展开全部释义'}</button>
+              <button onclick="app.toggleRevealAll()" class="text-xs text-indigo-600 hover:underline">${allOpen ? '收起全部释义' : '展开全部释义'}</button>
             </div>
             ${toDo.length ? `<div class="grid grid-cols-1 gap-2">${toDo.map(w => this.renderReciteCard(w, 'todo')).join('')}</div>` : `<div class="text-center text-sm text-gray-400 py-10">🎉 今日单词已全部背完！</div>`}
           </div>
@@ -680,8 +681,9 @@ moist | 潮湿的 | moisture 潮气
 
       toggleRevealAll() {
         const selWords = this.getDayWords(this.recite.selectedDay || this.todayDayNum());
-        const allOpen = selWords.every(w => this.recite.reveal[w.index]);
-        selWords.forEach(w => { this.recite.reveal[w.index] = !allOpen; });
+        const toDo = selWords.filter(w => !this.recite.checked.has(w.index));
+        const allOpen = toDo.length > 0 && toDo.every(w => this.recite.reveal[w.index]);
+        toDo.forEach(w => { this.recite.reveal[w.index] = !allOpen; });
         this.renderRecite();
       }
 
