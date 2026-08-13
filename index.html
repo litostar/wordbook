@@ -212,6 +212,13 @@
             </div>
           </div>
         </header>
+        <!-- 打卡撤销条（显示 2 秒自动消失） -->
+        <div id="recite-undo" class="hidden mx-4 md:mx-6 mt-3">
+          <div class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-gray-900/90 text-white text-sm shadow-lg">
+            <span id="recite-undo-text">已标记为已背</span>
+            <button type="button" onclick="app.undoLast()" class="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-medium transition-colors">撤销</button>
+          </div>
+        </div>
         <div id="recite-content" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 pb-28 hide-scrollbar">
           <!-- Rendered by JS -->
         </div>
@@ -396,9 +403,13 @@ moist | 潮湿的 | moisture 潮气
           days: 30,
           startDate: this.todayStr(),
           checked: new Set(),
+          recalled: new Set(),
           reveal: {},
+          collapsedDone: true,
           selectedDay: null
         };
+        this.undoIndex = null;
+        this.undoTimer = null;
         this.loadData();
         this.loadRecite();
         this.init();
@@ -442,6 +453,8 @@ moist | 潮湿的 | moisture 潮气
             this.recite.days = d.days || 30;
             this.recite.startDate = d.startDate || this.todayStr();
             this.recite.checked = new Set(d.checked || []);
+            this.recite.recalled = new Set(d.recalled || []);
+            this.recite.collapsedDone = d.collapsedDone !== false;
             this.recite.selectedDay = d.selectedDay || null;
           }
         } catch (e) {}
@@ -453,6 +466,8 @@ moist | 潮湿的 | moisture 潮气
           days: this.recite.days,
           startDate: this.recite.startDate,
           checked: [...this.recite.checked],
+          recalled: [...this.recite.recalled],
+          collapsedDone: this.recite.collapsedDone,
           selectedDay: this.recite.selectedDay
         }));
       }
@@ -522,6 +537,9 @@ moist | 潮湿的 | moisture 潮气
         const selDay = this.recite.selectedDay || todayDay;
         const selWords = this.getDayWords(selDay);
         const selDone = selWords.filter(w => this.recite.checked.has(w.index)).length;
+        const toDo = selWords.filter(w => !this.recite.checked.has(w.index));
+        const done = selWords.filter(w => this.recite.checked.has(w.index));
+        const recalledCount = toDo.filter(w => this.recite.recalled.has(w.index)).length;
 
         // 天数提示
         let dayHint = `今天：第 ${todayDay} 天 / 共 ${days} 天`;
@@ -592,16 +610,25 @@ moist | 潮湿的 | moisture 潮气
             </div>
           </div>
 
-          <!-- 当日单词列表 -->
+          <!-- 待背列表 -->
           <div class="fade-in">
             <div class="flex items-center justify-between mb-3">
-              <h3 class="text-sm font-bold text-gray-700">第 ${selDay} 天 · ${selDone}/${selWords.length} 已背</h3>
+              <h3 class="text-sm font-bold text-gray-700">第 ${selDay} 天 · 待背 ${toDo.length} 词${recalledCount ? ` · ${recalledCount} 个回撤` : ''}</h3>
               <button onclick="app.toggleRevealAll()" class="text-xs text-indigo-600 hover:underline">${Object.keys(this.recite.reveal).length ? '收起全部释义' : '展开全部释义'}</button>
             </div>
-            <div class="grid grid-cols-1 gap-2">
-              ${selWords.map(w => this.renderReciteCard(w)).join('')}
-            </div>
+            ${toDo.length ? `<div class="grid grid-cols-1 gap-2">${toDo.map(w => this.renderReciteCard(w, 'todo')).join('')}</div>` : `<div class="text-center text-sm text-gray-400 py-10">🎉 今日单词已全部背完！</div>`}
           </div>
+
+          <!-- 已背折叠区 -->
+          ${done.length ? `
+          <div class="fade-in">
+            <button onclick="app.toggleDoneCollapse()" class="w-full flex items-center justify-between px-4 py-2.5 rounded-xl bg-green-50 border border-green-200 text-sm font-medium text-green-700 hover:bg-green-100 transition-colors">
+              <span>✓ 已背 ${done.length} 词（点击${this.recite.collapsedDone ? '展开' : '收起'}）</span>
+              <i data-lucide="${this.recite.collapsedDone ? 'chevron-down' : 'chevron-up'}" class="w-4 h-4"></i>
+            </button>
+            ${this.recite.collapsedDone ? '' : `<div class="grid grid-cols-1 gap-2 mt-2">${done.map(w => this.renderReciteCard(w, 'done')).join('')}</div>`}
+          </div>
+          ` : ''}
         `;
         lucide.createIcons();
       }
@@ -612,20 +639,29 @@ moist | 潮湿的 | moisture 潮气
         this.renderRecite();
       }
 
-      renderReciteCard(w) {
-        const done = this.recite.checked.has(w.index);
+      renderReciteCard(w, mode) {
+        const isDone = mode === 'done';
+        const recalled = mode === 'todo' && this.recite.recalled.has(w.index);
         const revealed = !!this.recite.reveal[w.index];
+        let cardCls = 'bg-white border rounded-xl p-4 transition-all ';
+        if (isDone) cardCls += 'border-green-300 bg-green-50/40';
+        else if (recalled) cardCls += 'border-orange-300 bg-orange-50/50';
+        else cardCls += 'border-gray-200';
+        const leftBtn = isDone
+          ? `<button type="button" onclick="app.recallWord(${w.index})" class="flex-shrink-0 mt-0.5 px-2.5 py-1 text-xs font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 rounded-lg" title="回撤到待背（说明没记住）">回撤</button>`
+          : `<button type="button" onclick="app.toggleReciteCheck(${w.index})" class="flex-shrink-0 mt-0.5 w-6 h-6 rounded-md border-2 border-gray-300 hover:border-indigo-400 flex items-center justify-center transition-colors" title="标记已背"></button>`;
+        const badge = isDone
+          ? '<span class="px-2 py-0.5 rounded-md text-xs font-medium bg-green-100 text-green-700">已背</span>'
+          : (recalled ? '<span class="px-2 py-0.5 rounded-md text-xs font-medium bg-orange-100 text-orange-700">↩ 回撤·重点</span>' : '');
         return `
-          <div class="bg-white border rounded-xl p-4 transition-all ${done ? 'border-green-300 bg-green-50/40' : 'border-gray-200'}">
+          <div class="${cardCls}">
             <div class="flex items-start gap-3">
-              <button type="button" onclick="app.toggleReciteCheck(${w.index})" class="flex-shrink-0 mt-0.5 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors ${done ? 'bg-green-600 border-green-600' : 'border-gray-300 hover:border-indigo-400'}" title="标记已背">
-                ${done ? '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>' : ''}
-              </button>
+              ${leftBtn}
               <div class="flex-1 min-w-0 cursor-pointer" onclick="app.toggleReveal(${w.index})">
                 <div class="flex items-center gap-2 flex-wrap">
                   <span class="text-base font-bold text-gray-900">${this.escapeHtml(w.word)}</span>
                   ${w.phon ? `<span class="text-xs text-gray-400">/${this.escapeHtml(w.phon)}/</span>` : ''}
-                  ${done ? '<span class="px-2 py-0.5 rounded-md text-xs font-medium bg-green-100 text-green-700">已背</span>' : ''}
+                  ${badge}
                 </div>
                 <p class="text-sm text-gray-700 mt-1 ${revealed ? '' : 'hidden'}">${this.escapeHtml(w.meaning)}</p>
               </div>
@@ -650,8 +686,46 @@ moist | 潮湿的 | moisture 潮气
       }
 
       toggleReciteCheck(index) {
-        if (this.recite.checked.has(index)) this.recite.checked.delete(index);
-        else this.recite.checked.add(index);
+        this.recite.checked.add(index);
+        this.recite.recalled.delete(index);
+        this.saveRecite();
+        this.renderRecite();
+        this.showUndo(index);
+      }
+
+      showUndo(index) {
+        this.undoIndex = index;
+        const el = document.getElementById('recite-undo');
+        const txt = document.getElementById('recite-undo-text');
+        const w = (window.VOCAB_IELTS || [])[index];
+        if (txt && w) txt.textContent = `已标记「${this.escapeHtml(w.word)}」为已背`;
+        if (el) {
+          el.classList.remove('hidden');
+          clearTimeout(this.undoTimer);
+          this.undoTimer = setTimeout(() => { el.classList.add('hidden'); this.undoIndex = null; }, 2000);
+        }
+      }
+
+      undoLast() {
+        if (this.undoIndex == null) return;
+        this.recite.checked.delete(this.undoIndex);
+        this.undoIndex = null;
+        this.saveRecite();
+        this.renderRecite();
+        const el = document.getElementById('recite-undo');
+        if (el) el.classList.add('hidden');
+        clearTimeout(this.undoTimer);
+      }
+
+      recallWord(index) {
+        this.recite.checked.delete(index);
+        this.recite.recalled.add(index);
+        this.saveRecite();
+        this.renderRecite();
+      }
+
+      toggleDoneCollapse() {
+        this.recite.collapsedDone = !this.recite.collapsedDone;
         this.saveRecite();
         this.renderRecite();
       }
@@ -661,6 +735,7 @@ moist | 潮湿的 | moisture 潮气
           days: this.recite.days,
           startDate: this.recite.startDate,
           checked: [...this.recite.checked],
+          recalled: [...this.recite.recalled],
           selectedDay: this.recite.selectedDay
         }, null, 2);
         const blob = new Blob([data], { type: 'application/json' });
@@ -682,6 +757,7 @@ moist | 潮湿的 | moisture 潮气
             this.recite.days = d.days || 30;
             this.recite.startDate = d.startDate || this.todayStr();
             this.recite.checked = new Set(d.checked || []);
+            this.recite.recalled = new Set(d.recalled || []);
             this.recite.selectedDay = d.selectedDay || this.todayDayNum();
             this.saveRecite();
             this.renderRecite();
@@ -697,6 +773,7 @@ moist | 潮湿的 | moisture 潮气
       resetRecite() {
         if (!confirm('确定清空所有打卡记录吗？词表保留，仅清除「已背」标记。')) return;
         this.recite.checked = new Set();
+        this.recite.recalled = new Set();
         this.saveRecite();
         this.renderRecite();
       }
