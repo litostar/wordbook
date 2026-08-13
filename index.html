@@ -6,6 +6,7 @@
   <title>单词本工作台</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="vocab_ielts.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap');
     body { font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif; }
@@ -41,7 +42,18 @@
           <h1 class="text-xl font-bold text-gray-900">单词本</h1>
         </div>
 
-        <div class="space-y-1 mb-6">
+        <div class="flex bg-gray-100 rounded-xl p-1 mb-6">
+          <button onclick="app.setView('manage')" id="view-manage" class="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors">
+            <i data-lucide="book-open" class="w-4 h-4"></i>
+            <span>单词本</span>
+          </button>
+          <button onclick="app.setView('recite')" id="view-recite" class="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors">
+            <i data-lucide="calendar-check" class="w-4 h-4"></i>
+            <span>背诵计划</span>
+          </button>
+        </div>
+
+        <div class="space-y-1 mb-6" id="manage-categories">
           <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-2">分类</p>
           <button onclick="app.setCategory('all')" id="cat-all" class="cat-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-left">
             <i data-lucide="layers" class="w-4 h-4"></i>
@@ -105,7 +117,7 @@
     <!-- Main -->
     <main class="flex-1 flex flex-col min-h-0">
       <!-- Header -->
-      <header class="bg-white border-b border-gray-200 px-4 md:px-6 py-4 sticky top-0 z-10">
+      <header id="manage-header" class="bg-white border-b border-gray-200 px-4 md:px-6 py-4 sticky top-0 z-10">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 id="page-title" class="text-lg font-bold text-gray-900">全部单词</h2>
@@ -136,7 +148,7 @@
       </header>
 
       <!-- Add Word Form -->
-      <div class="bg-white border-b border-gray-200 px-4 md:px-6 py-4">
+      <div id="manage-addform" class="bg-white border-b border-gray-200 px-4 md:px-6 py-4">
         <form id="add-form" onsubmit="app.addWord(event)" class="flex flex-col md:flex-row gap-3 items-start">
           <div class="flex-1 grid grid-cols-1 md:grid-cols-12 gap-3 w-full">
             <div class="md:col-span-3">
@@ -176,6 +188,33 @@
       <!-- Word List -->
       <div id="word-list" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 pb-24">
         <!-- Rendered by JS -->
+      </div>
+
+      <!-- Recite Plan View -->
+      <div id="recite-view" class="hidden flex-1 flex flex-col min-h-0">
+        <header class="bg-white border-b border-gray-200 px-4 md:px-6 py-4 sticky top-0 z-10">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-2">
+            <div>
+              <h2 class="text-lg font-bold text-gray-900">背诵计划</h2>
+              <p id="recite-subtitle" class="text-sm text-gray-500 mt-0.5">雅思高频听阅词汇</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="app.exportRecite()" class="px-3 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
+                <i data-lucide="download" class="w-4 h-4"></i><span>导出进度</span>
+              </button>
+              <label class="px-3 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5 cursor-pointer">
+                <i data-lucide="upload" class="w-4 h-4"></i><span>导入进度</span>
+                <input type="file" accept=".json" class="hidden" onchange="app.importRecite(this)">
+              </label>
+              <button onclick="app.resetRecite()" class="px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1.5">
+                <i data-lucide="rotate-ccw" class="w-4 h-4"></i><span>清空打卡</span>
+              </button>
+            </div>
+          </div>
+        </header>
+        <div id="recite-content" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 pb-28 hide-scrollbar">
+          <!-- Rendered by JS -->
+        </div>
       </div>
     </main>
   </div>
@@ -352,15 +391,314 @@ moist | 潮湿的 | moisture 潮气
           selectedIds: new Set()
         };
         this.bulkParsed = [];
+        this.view = 'manage';
+        this.recite = {
+          days: 30,
+          startDate: this.todayStr(),
+          checked: new Set(),
+          reveal: {},
+          selectedDay: null
+        };
         this.loadData();
+        this.loadRecite();
         this.init();
+      }
+
+      todayStr() {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       }
 
       init() {
         document.getElementById('input-date').valueAsDate = new Date();
+        this.setView('manage');
         this.renderCategories();
         this.render();
         lucide.createIcons();
+      }
+
+      setView(v) {
+        this.view = v;
+        const manageEls = ['manage-header', 'manage-addform', 'word-list', 'manage-categories'];
+        const isRecite = v === 'recite';
+        manageEls.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.style.display = isRecite ? 'none' : (id === 'word-list' ? 'block' : '');
+        });
+        document.getElementById('recite-view').style.display = isRecite ? 'flex' : 'none';
+        // 视图切换按钮高亮
+        document.getElementById('view-manage').className = 'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ' + (isRecite ? 'text-gray-500 hover:bg-gray-200' : 'bg-white text-indigo-700 shadow-sm');
+        document.getElementById('view-recite').className = 'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ' + (isRecite ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-200');
+        if (isRecite) this.renderRecite();
+      }
+
+      // ===== Recite Plan =====
+
+      loadRecite() {
+        try {
+          const raw = localStorage.getItem('wordbook_recite_v1');
+          if (raw) {
+            const d = JSON.parse(raw);
+            this.recite.days = d.days || 30;
+            this.recite.startDate = d.startDate || this.todayStr();
+            this.recite.checked = new Set(d.checked || []);
+            this.recite.selectedDay = d.selectedDay || null;
+          }
+        } catch (e) {}
+        if (!this.recite.selectedDay) this.recite.selectedDay = this.todayDayNum();
+      }
+
+      saveRecite() {
+        localStorage.setItem('wordbook_recite_v1', JSON.stringify({
+          days: this.recite.days,
+          startDate: this.recite.startDate,
+          checked: [...this.recite.checked],
+          selectedDay: this.recite.selectedDay
+        }));
+      }
+
+      computePlan() {
+        const total = (window.VOCAB_IELTS || []).length;
+        const days = Math.max(1, this.recite.days);
+        const perDay = Math.ceil(total / days);
+        return { total, days, perDay };
+      }
+
+      todayDayNum() {
+        const start = new Date(this.recite.startDate + 'T00:00:00');
+        const now = new Date(); now.setHours(0,0,0,0); start.setHours(0,0,0,0);
+        const diff = Math.floor((now - start) / 86400000);
+        const { days } = this.computePlan();
+        let day = diff + 1;
+        if (day < 1) day = 1;
+        if (day > days) day = days;
+        return day;
+      }
+
+      getDayWords(day) {
+        const { total, perDay } = this.computePlan();
+        const start = (day - 1) * perDay;
+        const end = Math.min(start + perDay, total);
+        const list = [];
+        for (let i = start; i < end; i++) {
+          const v = window.VOCAB_IELTS[i];
+          if (v) list.push({ index: i, word: v.word, phon: v.phon, meaning: v.meaning });
+        }
+        return list;
+      }
+
+      dayDoneCount(day) {
+        return this.getDayWords(day).filter(w => this.recite.checked.has(w.index)).length;
+      }
+
+      saveRecitePlan() {
+        const daysVal = parseInt(document.getElementById('recite-days-input').value, 10);
+        const startVal = document.getElementById('recite-start-input').value;
+        if (!daysVal || daysVal < 1) { alert('请输入有效的天数'); return; }
+        this.recite.days = daysVal;
+        if (startVal) this.recite.startDate = startVal;
+        this.recite.selectedDay = this.todayDayNum();
+        this.saveRecite();
+        this.renderRecite();
+        this.flashSaved();
+      }
+
+      flashSaved() {
+        const el = document.getElementById('recite-saved');
+        if (!el) return;
+        el.classList.remove('opacity-0');
+        setTimeout(() => el.classList.add('opacity-0'), 1500);
+      }
+
+      renderRecite() {
+        const { total, days, perDay } = this.computePlan();
+        const content = document.getElementById('recite-content');
+        if (!window.VOCAB_IELTS) {
+          content.innerHTML = '<div class="text-center text-gray-400 py-16">词表正在加载…</div>';
+          return;
+        }
+        const checkedCount = this.recite.checked.size;
+        const todayDay = this.todayDayNum();
+        const selDay = this.recite.selectedDay || todayDay;
+        const selWords = this.getDayWords(selDay);
+        const selDone = selWords.filter(w => this.recite.checked.has(w.index)).length;
+
+        // 天数提示
+        let dayHint = `今天：第 ${todayDay} 天 / 共 ${days} 天`;
+        const start = new Date(this.recite.startDate + 'T00:00:00');
+        const now = new Date(); now.setHours(0,0,0,0); start.setHours(0,0,0,0);
+        if (Math.floor((now - start)/86400000) < 0) dayHint = `尚未开始（开始于 ${this.recite.startDate}）· 预览第 ${selDay} 天`;
+        else if (todayDay >= days) dayHint = `计划已完成 🎉（共 ${days} 天）`;
+
+        content.innerHTML = `
+          <!-- 计划设置 -->
+          <div class="bg-white border border-gray-200 rounded-2xl p-5 fade-in">
+            <div class="flex items-center gap-2 mb-4">
+              <i data-lucide="sliders-horizontal" class="w-5 h-5 text-indigo-600"></i>
+              <h3 class="font-bold text-gray-900">制定计划</h3>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">总词数</label>
+                <div class="px-3 py-2 text-sm bg-gray-50 rounded-lg text-gray-700 font-medium">${total}</div>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">目标天数</label>
+                <input type="number" id="recite-days-input" min="1" value="${days}" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">开始日期</label>
+                <input type="date" id="recite-start-input" value="${this.recite.startDate}" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">每天约背</label>
+                <div class="px-3 py-2 text-sm bg-indigo-50 rounded-lg text-indigo-700 font-bold">${perDay} 词</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <button onclick="app.saveRecitePlan()" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg">保存计划</button>
+              <span id="recite-saved" class="text-xs text-green-600 opacity-0 transition-opacity flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5"></i>已保存</span>
+            </div>
+          </div>
+
+          <!-- 总体进度 -->
+          <div class="bg-white border border-gray-200 rounded-2xl p-5 fade-in">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm font-semibold text-gray-700">总体进度</span>
+              <span class="text-sm text-gray-500">已背 ${checkedCount} / ${total}</span>
+            </div>
+            <div class="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+              <div class="h-full bg-indigo-600 rounded-full transition-all" style="width:${total? Math.round(checkedCount/total*100):0}%"></div>
+            </div>
+            <p class="text-xs text-gray-400 mt-2">打卡即时保存，可随时「导出进度」备份，换设备后「导入进度」恢复。</p>
+          </div>
+
+          <!-- 天数导航 -->
+          <div class="fade-in">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-sm font-bold text-gray-700">${dayHint}</h3>
+            </div>
+            <div class="flex gap-2 overflow-x-auto pb-2 hide-scrollbar" id="recite-day-chips">
+              ${Array.from({length: days}, (_, i) => {
+                const d = i + 1;
+                const done = this.dayDoneCount(d);
+                const wds = this.getDayWords(d).length;
+                const isSel = d === selDay;
+                const isToday = d === todayDay;
+                return `<button onclick="app.gotoDay(${d})" class="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${isSel ? 'bg-indigo-600 text-white border-indigo-600' : isToday ? 'bg-indigo-50 text-indigo-700 border-indigo-300' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}">
+                  ${d === todayDay ? '🔥' : ''}${d}<span class="opacity-70 ml-1">${done}/${wds}</span>
+                </button>`;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- 当日单词列表 -->
+          <div class="fade-in">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-bold text-gray-700">第 ${selDay} 天 · ${selDone}/${selWords.length} 已背</h3>
+              <button onclick="app.toggleRevealAll()" class="text-xs text-indigo-600 hover:underline">${Object.keys(this.recite.reveal).length ? '收起全部释义' : '展开全部释义'}</button>
+            </div>
+            <div class="grid grid-cols-1 gap-2">
+              ${selWords.map(w => this.renderReciteCard(w)).join('')}
+            </div>
+          </div>
+        `;
+        lucide.createIcons();
+      }
+
+      gotoDay(d) {
+        this.recite.selectedDay = d;
+        this.saveRecite();
+        this.renderRecite();
+      }
+
+      renderReciteCard(w) {
+        const done = this.recite.checked.has(w.index);
+        const revealed = !!this.recite.reveal[w.index];
+        return `
+          <div class="bg-white border rounded-xl p-4 transition-all ${done ? 'border-green-300 bg-green-50/40' : 'border-gray-200'}">
+            <div class="flex items-start gap-3">
+              <button type="button" onclick="app.toggleReciteCheck(${w.index})" class="flex-shrink-0 mt-0.5 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors ${done ? 'bg-green-600 border-green-600' : 'border-gray-300 hover:border-indigo-400'}" title="标记已背">
+                ${done ? '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>' : ''}
+              </button>
+              <div class="flex-1 min-w-0 cursor-pointer" onclick="app.toggleReveal(${w.index})">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-base font-bold text-gray-900">${this.escapeHtml(w.word)}</span>
+                  ${w.phon ? `<span class="text-xs text-gray-400">/${this.escapeHtml(w.phon)}/</span>` : ''}
+                  ${done ? '<span class="px-2 py-0.5 rounded-md text-xs font-medium bg-green-100 text-green-700">已背</span>' : ''}
+                </div>
+                <p class="text-sm text-gray-700 mt-1 ${revealed ? '' : 'hidden'}">${this.escapeHtml(w.meaning)}</p>
+              </div>
+              <button type="button" onclick="app.toggleReveal(${w.index})" class="flex-shrink-0 px-2.5 py-1 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg">
+                ${revealed ? '隐藏' : '释义'}
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      toggleReveal(index) {
+        this.recite.reveal[index] = !this.recite.reveal[index];
+        this.renderRecite();
+      }
+
+      toggleRevealAll() {
+        const selWords = this.getDayWords(this.recite.selectedDay || this.todayDayNum());
+        const allOpen = selWords.every(w => this.recite.reveal[w.index]);
+        selWords.forEach(w => { this.recite.reveal[w.index] = !allOpen; });
+        this.renderRecite();
+      }
+
+      toggleReciteCheck(index) {
+        if (this.recite.checked.has(index)) this.recite.checked.delete(index);
+        else this.recite.checked.add(index);
+        this.saveRecite();
+        this.renderRecite();
+      }
+
+      exportRecite() {
+        const data = JSON.stringify({
+          days: this.recite.days,
+          startDate: this.recite.startDate,
+          checked: [...this.recite.checked],
+          selectedDay: this.recite.selectedDay
+        }, null, 2);
+        const blob = new Blob([data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `背诵进度-${this.todayStr()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      importRecite(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const d = JSON.parse(e.target.result);
+            this.recite.days = d.days || 30;
+            this.recite.startDate = d.startDate || this.todayStr();
+            this.recite.checked = new Set(d.checked || []);
+            this.recite.selectedDay = d.selectedDay || this.todayDayNum();
+            this.saveRecite();
+            this.renderRecite();
+            alert('进度导入成功');
+          } catch (err) {
+            alert('导入失败：' + err.message);
+          }
+        };
+        reader.readAsText(file);
+        input.value = '';
+      }
+
+      resetRecite() {
+        if (!confirm('确定清空所有打卡记录吗？词表保留，仅清除「已背」标记。')) return;
+        this.recite.checked = new Set();
+        this.saveRecite();
+        this.renderRecite();
       }
 
       loadData() {
