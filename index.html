@@ -447,7 +447,7 @@ moist | 潮湿的 | moisture 潮气
 
       loadRecite() {
         try {
-          const raw = localStorage.getItem('wordbook_recite_v1');
+          const raw = localStorage.getItem('wordbook_recite_v2');
           if (raw) {
             const d = JSON.parse(raw);
             this.recite.days = d.days || 30;
@@ -456,13 +456,25 @@ moist | 潮湿的 | moisture 潮气
             this.recite.recalled = new Set(d.recalled || []);
             this.recite.collapsedDone = d.collapsedDone !== false;
             this.recite.selectedDay = d.selectedDay || null;
+          } else {
+            // 从 v1 迁移：保留计划参数（天数/开始日期），但 v1 的打卡是按索引存的，
+            // 词表重新解析后索引失效，故打卡/回撤重置为空，避免错位。
+            const old = localStorage.getItem('wordbook_recite_v1');
+            if (old) {
+              try {
+                const d = JSON.parse(old);
+                this.recite.days = d.days || 30;
+                this.recite.startDate = d.startDate || this.todayStr();
+                this.recite.selectedDay = d.selectedDay || null;
+              } catch (e) {}
+            }
           }
         } catch (e) {}
         if (!this.recite.selectedDay) this.recite.selectedDay = this.todayDayNum();
       }
 
       saveRecite() {
-        localStorage.setItem('wordbook_recite_v1', JSON.stringify({
+        localStorage.setItem('wordbook_recite_v2', JSON.stringify({
           days: this.recite.days,
           startDate: this.recite.startDate,
           checked: [...this.recite.checked],
@@ -497,13 +509,13 @@ moist | 潮湿的 | moisture 潮气
         const list = [];
         for (let i = start; i < end; i++) {
           const v = window.VOCAB_IELTS[i];
-          if (v) list.push({ index: i, word: v.word, phon: v.phon, meaning: v.meaning });
+          if (v) list.push({ word: v.word, phon: v.phon, meaning: v.meaning });
         }
         return list;
       }
 
       dayDoneCount(day) {
-        return this.getDayWords(day).filter(w => this.recite.checked.has(w.index)).length;
+        return this.getDayWords(day).filter(w => this.recite.checked.has(w.word)).length;
       }
 
       saveRecitePlan() {
@@ -536,11 +548,11 @@ moist | 潮湿的 | moisture 潮气
         const todayDay = this.todayDayNum();
         const selDay = this.recite.selectedDay || todayDay;
         const selWords = this.getDayWords(selDay);
-        const selDone = selWords.filter(w => this.recite.checked.has(w.index)).length;
-        const toDo = selWords.filter(w => !this.recite.checked.has(w.index));
-        const done = selWords.filter(w => this.recite.checked.has(w.index));
-        const recalledCount = toDo.filter(w => this.recite.recalled.has(w.index)).length;
-        const allOpen = toDo.length > 0 && toDo.every(w => this.recite.reveal[w.index]);
+        const selDone = selWords.filter(w => this.recite.checked.has(w.word)).length;
+        const toDo = selWords.filter(w => !this.recite.checked.has(w.word));
+        const done = selWords.filter(w => this.recite.checked.has(w.word));
+        const recalledCount = toDo.filter(w => this.recite.recalled.has(w.word)).length;
+        const allOpen = toDo.length > 0 && toDo.every(w => this.recite.reveal[w.word]);
 
         // 天数提示
         let dayHint = `今天：第 ${todayDay} 天 / 共 ${days} 天`;
@@ -642,15 +654,15 @@ moist | 潮湿的 | moisture 潮气
 
       renderReciteCard(w, mode) {
         const isDone = mode === 'done';
-        const recalled = mode === 'todo' && this.recite.recalled.has(w.index);
-        const revealed = !!this.recite.reveal[w.index];
+        const recalled = mode === 'todo' && this.recite.recalled.has(w.word);
+        const revealed = !!this.recite.reveal[w.word];
         let cardCls = 'bg-white border rounded-xl p-4 transition-all ';
         if (isDone) cardCls += 'border-green-300 bg-green-50/40';
         else if (recalled) cardCls += 'border-orange-300 bg-orange-50/50';
         else cardCls += 'border-gray-200';
         const leftBtn = isDone
-          ? `<button type="button" onclick="app.recallWord(${w.index})" class="flex-shrink-0 mt-0.5 px-2.5 py-1 text-xs font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 rounded-lg" title="回撤到待背（说明没记住）">回撤</button>`
-          : `<button type="button" onclick="app.toggleReciteCheck(${w.index})" class="flex-shrink-0 mt-0.5 w-6 h-6 rounded-md border-2 border-gray-300 hover:border-indigo-400 flex items-center justify-center transition-colors" title="标记已背"></button>`;
+          ? `<button type="button" onclick="app.recallWord('${this.jsQuote(w.word)}')" class="flex-shrink-0 mt-0.5 px-2.5 py-1 text-xs font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 rounded-lg" title="回撤到待背（说明没记住）">回撤</button>`
+          : `<button type="button" onclick="app.toggleReciteCheck('${this.jsQuote(w.word)}')" class="flex-shrink-0 mt-0.5 w-6 h-6 rounded-md border-2 border-gray-300 hover:border-indigo-400 flex items-center justify-center transition-colors" title="标记已背"></button>`;
         const badge = isDone
           ? '<span class="px-2 py-0.5 rounded-md text-xs font-medium bg-green-100 text-green-700">已背</span>'
           : (recalled ? '<span class="px-2 py-0.5 rounded-md text-xs font-medium bg-orange-100 text-orange-700">↩ 回撤·重点</span>' : '');
@@ -658,7 +670,7 @@ moist | 潮湿的 | moisture 潮气
           <div class="${cardCls}">
             <div class="flex items-start gap-3">
               ${leftBtn}
-              <div class="flex-1 min-w-0 cursor-pointer" onclick="app.toggleReveal(${w.index})">
+              <div class="flex-1 min-w-0 cursor-pointer" onclick="app.toggleReveal('${this.jsQuote(w.word)}')">
                 <div class="flex items-center gap-2 flex-wrap">
                   <span class="text-base font-bold text-gray-900">${this.escapeHtml(w.word)}</span>
                   ${w.phon ? `<span class="text-xs text-gray-400">/${this.escapeHtml(w.phon)}/</span>` : ''}
@@ -666,7 +678,7 @@ moist | 潮湿的 | moisture 潮气
                 </div>
                 <p class="text-sm text-gray-700 mt-1 ${revealed ? '' : 'hidden'}">${this.escapeHtml(w.meaning)}</p>
               </div>
-              <button type="button" onclick="app.toggleReveal(${w.index})" class="flex-shrink-0 px-2.5 py-1 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg">
+              <button type="button" onclick="app.toggleReveal('${this.jsQuote(w.word)}')" class="flex-shrink-0 px-2.5 py-1 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg">
                 ${revealed ? '隐藏' : '释义'}
               </button>
             </div>
@@ -674,33 +686,32 @@ moist | 潮湿的 | moisture 潮气
         `;
       }
 
-      toggleReveal(index) {
-        this.recite.reveal[index] = !this.recite.reveal[index];
+      toggleReveal(word) {
+        this.recite.reveal[word] = !this.recite.reveal[word];
         this.renderRecite();
       }
 
       toggleRevealAll() {
         const selWords = this.getDayWords(this.recite.selectedDay || this.todayDayNum());
-        const toDo = selWords.filter(w => !this.recite.checked.has(w.index));
-        const allOpen = toDo.length > 0 && toDo.every(w => this.recite.reveal[w.index]);
-        toDo.forEach(w => { this.recite.reveal[w.index] = !allOpen; });
+        const toDo = selWords.filter(w => !this.recite.checked.has(w.word));
+        const allOpen = toDo.length > 0 && toDo.every(w => this.recite.reveal[w.word]);
+        toDo.forEach(w => { this.recite.reveal[w.word] = !allOpen; });
         this.renderRecite();
       }
 
-      toggleReciteCheck(index) {
-        this.recite.checked.add(index);
-        this.recite.recalled.delete(index);
+      toggleReciteCheck(word) {
+        this.recite.checked.add(word);
+        this.recite.recalled.delete(word);
         this.saveRecite();
         this.renderRecite();
-        this.showUndo(index);
+        this.showUndo(word);
       }
 
-      showUndo(index) {
-        this.undoIndex = index;
+      showUndo(word) {
+        this.undoIndex = word;
         const el = document.getElementById('recite-undo');
         const txt = document.getElementById('recite-undo-text');
-        const w = (window.VOCAB_IELTS || [])[index];
-        if (txt && w) txt.textContent = `已标记「${this.escapeHtml(w.word)}」为已背`;
+        if (txt) txt.textContent = `已标记「${this.escapeHtml(word)}」为已背`;
         if (el) {
           el.classList.remove('hidden');
           clearTimeout(this.undoTimer);
@@ -719,9 +730,9 @@ moist | 潮湿的 | moisture 潮气
         clearTimeout(this.undoTimer);
       }
 
-      recallWord(index) {
-        this.recite.checked.delete(index);
-        this.recite.recalled.add(index);
+      recallWord(word) {
+        this.recite.checked.delete(word);
+        this.recite.recalled.add(word);
         this.saveRecite();
         this.renderRecite();
       }
@@ -944,6 +955,10 @@ moist | 潮湿的 | moisture 潮气
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+      }
+
+      jsQuote(text) {
+        return String(text).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '');
       }
 
       addWord(e) {
