@@ -33,9 +33,22 @@
   </script>
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen">
+  <!-- Mobile Top Bar -->
+  <header class="md:hidden sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
+    <button onclick="app.toggleDrawer()" class="p-2 -ml-2 text-gray-600" aria-label="菜单"><i data-lucide="menu" class="w-5 h-5"></i></button>
+    <h1 class="text-lg font-bold text-gray-900 flex-1">单词本</h1>
+    <div class="flex bg-gray-100 rounded-lg p-0.5 text-xs font-medium">
+      <button onclick="app.setView('manage')" id="m-view-manage" class="px-2.5 py-1 rounded-md transition-colors text-gray-500">单词本</button>
+      <button onclick="app.setView('recite')" id="m-view-recite" class="px-2.5 py-1 rounded-md transition-colors text-gray-500">背诵计划</button>
+    </div>
+  </header>
+
+  <!-- Drawer overlay (mobile) -->
+  <div id="drawer-overlay" class="fixed inset-0 bg-black/40 z-40 hidden md:hidden" onclick="app.closeDrawer()"></div>
+
   <div id="app" class="max-w-5xl mx-auto min-h-screen flex flex-col md:flex-row">
     <!-- Sidebar / Category -->
-    <aside class="bg-white border-b md:border-b-0 md:border-r border-gray-200 md:w-64 flex-shrink-0">
+    <aside id="app-aside" class="bg-white border-b md:border-b-0 md:border-r border-gray-200 md:w-64 flex-shrink-0 fixed inset-y-0 left-0 z-50 w-72 max-w-[82%] overflow-y-auto transform -translate-x-full transition-transform duration-200 md:static md:translate-x-0 md:z-auto md:w-64 md:shadow-none shadow-xl">
       <div class="p-4 md:p-6">
         <div class="flex items-center gap-2 mb-6">
           <i data-lucide="book-open" class="w-6 h-6 text-indigo-600"></i>
@@ -110,6 +123,10 @@
             <i data-lucide="trash-2" class="w-4 h-4"></i>
             <span>清空数据</span>
           </button>
+          <button onclick="app.openSync()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-indigo-600 hover:bg-indigo-50 transition-colors text-left">
+            <i data-lucide="cloud" class="w-4 h-4"></i>
+            <span>云端同步</span>
+          </button>
         </div>
       </div>
     </aside>
@@ -117,7 +134,7 @@
     <!-- Main -->
     <main class="flex-1 flex flex-col min-h-0">
       <!-- Header -->
-      <header id="manage-header" class="bg-white border-b border-gray-200 px-4 md:px-6 py-4 sticky top-0 z-10">
+      <header id="manage-header" class="bg-white border-b border-gray-200 px-4 md:px-6 py-4 md:sticky md:top-0 z-10">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 id="page-title" class="text-lg font-bold text-gray-900">全部单词</h2>
@@ -192,13 +209,14 @@
 
       <!-- Recite Plan View -->
       <div id="recite-view" class="hidden flex-1 flex flex-col min-h-0">
-        <header class="bg-white border-b border-gray-200 px-4 md:px-6 py-4 sticky top-0 z-10">
+        <header class="bg-white border-b border-gray-200 px-4 md:px-6 py-4 md:sticky md:top-0 z-10">
           <div class="flex flex-col md:flex-row md:items-center justify-between gap-2">
             <div>
               <h2 class="text-lg font-bold text-gray-900">背诵计划</h2>
               <p id="recite-subtitle" class="text-sm text-gray-500 mt-0.5">雅思高频听阅词汇</p>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span id="sync-status" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">未启用云同步</span>
               <button onclick="app.exportRecite()" class="px-3 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
                 <i data-lucide="download" class="w-4 h-4"></i><span>导出进度</span>
               </button>
@@ -350,6 +368,46 @@ moist | 潮湿的 | moisture 潮气
     </div>
   </div>
 
+  <!-- Cloud Sync Settings Modal -->
+  <div id="sync-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <h3 class="font-bold text-gray-900">云端同步设置</h3>
+        <button onclick="app.closeSync()" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div class="p-5 space-y-4">
+        <label class="flex items-center justify-between cursor-pointer">
+          <span class="text-sm font-medium text-gray-700">启用云同步</span>
+          <input type="checkbox" id="sync-enabled" class="w-4 h-4 accent-indigo-600">
+        </label>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">GitHub Token（需 <code>repo</code> 权限，仅存于本机浏览器）</label>
+          <div class="flex gap-2">
+            <input type="password" id="sync-token" placeholder="ghp_..." class="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono">
+            <button type="button" onclick="app.toggleTokenVisible()" id="sync-token-toggle" class="px-2 text-gray-400 hover:text-gray-600"><i data-lucide="eye" class="w-4 h-4"></i></button>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">仓库所有者</label>
+            <input id="sync-owner" value="litostar" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">同步仓库名</label>
+            <input id="sync-repo" value="wordbook-sync" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+        </div>
+        <p class="text-xs text-gray-400 leading-relaxed">进度将存到该仓库的 <code class="px-1 bg-gray-100 rounded">recite_progress.json</code>（首次自动创建为<strong>私有仓库</strong>）。每台设备首次使用需在「云端同步」里粘贴一次同一 token。</p>
+        <div id="sync-msg" class="text-xs min-h-[1rem]"></div>
+      </div>
+      <div class="px-5 py-3 border-t border-gray-100 flex justify-end gap-2 flex-wrap">
+        <button onclick="app.disconnectSync()" class="px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg">断开</button>
+        <button onclick="app.manualSync()" class="px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 rounded-lg">立即同步</button>
+        <button onclick="app.saveSyncSettings()" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg">保存并测试</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const STORAGE_KEY = 'wordbook_v1';
     const CATEGORIES = {
@@ -373,6 +431,13 @@ moist | 潮湿的 | moisture 潮气
 
     function generateId() {
       return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    }
+
+    function utf8ToBase64(str) {
+      return btoa(String.fromCharCode.apply(null, new TextEncoder().encode(str)));
+    }
+    function base64ToUtf8(b64) {
+      return new TextDecoder().decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0)));
     }
 
     function formatDate(dateStr) {
@@ -412,6 +477,12 @@ moist | 潮湿的 | moisture 潮气
         this.undoTimer = null;
         this.loadData();
         this.loadRecite();
+        if (this.syncEnabled()) {
+          this.updateSyncStatus('同步中…', 'syncing');
+          this.pullRecite();
+        } else {
+          this.updateSyncStatus('未启用云同步', 'idle');
+        }
         this.init();
       }
 
@@ -437,9 +508,12 @@ moist | 潮湿的 | moisture 潮气
           if (el) el.style.display = isRecite ? 'none' : (id === 'word-list' ? 'block' : '');
         });
         document.getElementById('recite-view').style.display = isRecite ? 'flex' : 'none';
-        // 视图切换按钮高亮
-        document.getElementById('view-manage').className = 'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ' + (isRecite ? 'text-gray-500 hover:bg-gray-200' : 'bg-white text-indigo-700 shadow-sm');
-        document.getElementById('view-recite').className = 'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ' + (isRecite ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-200');
+        // 视图切换按钮高亮（桌面侧栏 + 手机顶栏）
+        const activeCls = 'bg-white text-indigo-700 shadow-sm';
+        const idleCls = 'text-gray-500 hover:bg-gray-200';
+        ['view-manage', 'm-view-manage'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ' + (isRecite ? idleCls : activeCls); });
+        ['view-recite', 'm-view-recite'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ' + (isRecite ? activeCls : idleCls); });
+        this.closeDrawer();
         if (isRecite) this.renderRecite();
       }
 
@@ -482,6 +556,7 @@ moist | 潮湿的 | moisture 潮气
           collapsedDone: this.recite.collapsedDone,
           selectedDay: this.recite.selectedDay
         }));
+        this.scheduleSyncPush();
       }
 
       computePlan() {
@@ -791,6 +866,184 @@ moist | 潮湿的 | moisture 潮气
         this.renderRecite();
       }
 
+      // ===== Cloud Sync (GitHub) =====
+      syncEnabled() {
+        const c = this.loadSyncCfg();
+        return !!(c.enabled && c.token);
+      }
+      loadSyncCfg() {
+        try { return JSON.parse(localStorage.getItem('wordbook_sync_cfg')) || {}; } catch (e) { return {}; }
+      }
+      saveSyncCfg(cfg) {
+        localStorage.setItem('wordbook_sync_cfg', JSON.stringify(cfg));
+      }
+      nowHM() {
+        const d = new Date();
+        return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      }
+      updateSyncStatus(text, type) {
+        const el = document.getElementById('sync-status');
+        if (!el) return;
+        const cls = { ok: 'bg-green-50 text-green-700', err: 'bg-red-50 text-red-700', idle: 'bg-gray-100 text-gray-500', syncing: 'bg-indigo-50 text-indigo-700' };
+        el.className = 'text-xs px-2 py-1 rounded-full ' + (cls[type] || cls.idle);
+        el.textContent = text;
+      }
+      async ghFetch(method, path, body) {
+        const c = this.loadSyncCfg();
+        return fetch('https://api.github.com' + path, {
+          method: method,
+          headers: {
+            Authorization: 'Bearer ' + (c.token || ''),
+            'Content-Type': 'application/json',
+            Accept: 'application/vnd.github+json'
+          },
+          body: body ? JSON.stringify(body) : undefined
+        });
+      }
+      async ensureSyncRepo() {
+        const c = this.loadSyncCfg();
+        const repoPath = '/repos/' + c.owner + '/' + c.repo;
+        let res = await this.ghFetch('GET', repoPath);
+        if (res.status === 200) return true;
+        if (res.status === 404) {
+          res = await this.ghFetch('POST', '/user/repos', {
+            name: c.repo, private: true,
+            description: '单词本背诵进度云同步（自动创建）', auto_init: false
+          });
+          if (res.status === 201 || res.status === 200 || res.status === 422) return true;
+          throw new Error('创建仓库失败：HTTP ' + res.status);
+        }
+        throw new Error('仓库检查失败：HTTP ' + res.status);
+      }
+      async pushRecite() {
+        if (!this.syncEnabled()) return;
+        this.updateSyncStatus('同步中…', 'syncing');
+        try {
+          const c = this.loadSyncCfg();
+          const content = JSON.stringify({
+            days: this.recite.days,
+            startDate: this.recite.startDate,
+            checked: Array.from(this.recite.checked),
+            recalled: Array.from(this.recite.recalled),
+            selectedDay: this.recite.selectedDay,
+            updatedAt: new Date().toISOString()
+          }, null, 2);
+          const filePath = '/repos/' + c.owner + '/' + c.repo + '/contents/' + c.path;
+          let sha = null;
+          const head = await this.ghFetch('GET', filePath);
+          if (head.status === 200) { const j = await head.json(); sha = j.sha; }
+          const body = { message: 'sync recite progress', content: utf8ToBase64(content) };
+          if (sha) body.sha = sha;
+          const res = await this.ghFetch('PUT', filePath, body);
+          if (res.status === 200 || res.status === 201) {
+            this.updateSyncStatus('已同步 ' + this.nowHM(), 'ok');
+          } else {
+            this.updateSyncStatus('同步失败 ' + res.status, 'err');
+          }
+        } catch (e) {
+          this.updateSyncStatus('同步失败', 'err');
+        }
+      }
+      async pullRecite() {
+        if (!this.syncEnabled()) return;
+        try {
+          const c = this.loadSyncCfg();
+          const filePath = '/repos/' + c.owner + '/' + c.repo + '/contents/' + c.path;
+          const res = await this.ghFetch('GET', filePath);
+          if (res.status !== 200) return;
+          const j = await res.json();
+          const remote = JSON.parse(base64ToUtf8(j.content));
+          if (Array.isArray(remote.checked)) remote.checked.forEach(w => this.recite.checked.add(w));
+          if (Array.isArray(remote.recalled)) remote.recalled.forEach(w => { this.recite.recalled.add(w); this.recite.checked.delete(w); });
+          if (remote.days) this.recite.days = remote.days;
+          if (remote.startDate) this.recite.startDate = remote.startDate;
+          if (remote.selectedDay) this.recite.selectedDay = remote.selectedDay;
+          this.saveRecite();
+          if (this.view === 'recite') this.renderRecite();
+          this.updateSyncStatus('已同步 ' + this.nowHM(), 'ok');
+        } catch (e) {
+          // 拉取失败不阻断本地使用
+        }
+      }
+      scheduleSyncPush() {
+        if (!this.syncEnabled()) return;
+        clearTimeout(this._syncTimer);
+        this._syncTimer = setTimeout(() => this.pushRecite(), 1500);
+      }
+      // 抽屉（手机侧栏）
+      toggleDrawer() {
+        const aside = document.getElementById('app-aside');
+        const overlay = document.getElementById('drawer-overlay');
+        if (!aside) return;
+        const open = aside.classList.contains('-translate-x-full');
+        aside.classList.toggle('-translate-x-full');
+        aside.classList.toggle('translate-x-0');
+        if (overlay) overlay.classList.toggle('hidden', !open);
+      }
+      closeDrawer() {
+        const aside = document.getElementById('app-aside');
+        const overlay = document.getElementById('drawer-overlay');
+        if (aside) { aside.classList.add('-translate-x-full'); aside.classList.remove('translate-x-0'); }
+        if (overlay) overlay.classList.add('hidden');
+      }
+      // 云同步设置弹窗
+      openSync() {
+        const c = this.loadSyncCfg();
+        document.getElementById('sync-enabled').checked = !!c.enabled;
+        document.getElementById('sync-token').value = c.token || '';
+        document.getElementById('sync-owner').value = c.owner || 'litostar';
+        document.getElementById('sync-repo').value = c.repo || 'wordbook-sync';
+        document.getElementById('sync-msg').textContent = '';
+        document.getElementById('sync-modal').classList.remove('hidden');
+        document.getElementById('sync-modal').classList.add('flex');
+        lucide.createIcons();
+      }
+      closeSync() {
+        document.getElementById('sync-modal').classList.add('hidden');
+        document.getElementById('sync-modal').classList.remove('flex');
+      }
+      toggleTokenVisible() {
+        const inp = document.getElementById('sync-token');
+        inp.type = inp.type === 'password' ? 'text' : 'password';
+      }
+      async saveSyncSettings() {
+        const enabled = document.getElementById('sync-enabled').checked;
+        const token = document.getElementById('sync-token').value.trim();
+        const owner = document.getElementById('sync-owner').value.trim() || 'litostar';
+        const repo = document.getElementById('sync-repo').value.trim() || 'wordbook-sync';
+        const msg = document.getElementById('sync-msg');
+        if (enabled && !token) { msg.innerHTML = '<span class="text-red-600">启用同步需要填写 Token</span>'; return; }
+        this.saveSyncCfg({ enabled: enabled, token: token, owner: owner, repo: repo, path: 'recite_progress.json' });
+        msg.innerHTML = '<span class="text-gray-500">正在测试连接…</span>';
+        try {
+          await this.ensureSyncRepo();
+          await this.pullRecite();
+          await this.pushRecite();
+          msg.innerHTML = '<span class="text-green-600">✓ 同步已启用并测试成功</span>';
+          this.updateSyncStatus('已同步 ' + this.nowHM(), 'ok');
+        } catch (e) {
+          msg.innerHTML = '<span class="text-red-600">连接失败：' + this.escapeHtml(e.message) + '</span>';
+          this.updateSyncStatus('同步失败', 'err');
+        }
+      }
+      async manualSync() {
+        const msg = document.getElementById('sync-msg');
+        try {
+          await this.pullRecite();
+          await this.pushRecite();
+          if (msg) msg.innerHTML = '<span class="text-green-600">✓ 同步完成</span>';
+        } catch (e) {
+          if (msg) msg.innerHTML = '<span class="text-red-600">同步失败：' + this.escapeHtml(e.message) + '</span>';
+        }
+      }
+      disconnectSync() {
+        if (!confirm('断开云同步？本机进度保留，但不再自动上传/下载。')) return;
+        const c = this.loadSyncCfg();
+        this.saveSyncCfg(Object.assign({}, c, { enabled: false }));
+        this.updateSyncStatus('未启用云同步', 'idle');
+        this.closeSync();
+      }
+
       loadData() {
         try {
           const raw = localStorage.getItem(STORAGE_KEY);
@@ -816,6 +1069,7 @@ moist | 潮湿的 | moisture 潮气
         if (sel && cat !== 'all') sel.value = cat;
         this.renderCategories();
         this.render();
+        this.closeDrawer();
       }
 
       setSearch(val) {
