@@ -471,7 +471,8 @@ moist | 潮湿的 | moisture 潮气
           recalled: new Set(),
           reveal: {},
           collapsedDone: true,
-          selectedDay: null
+          selectedDay: null,
+          dayCloudOpen: false
         };
         this.undoIndex = null;
         this.undoTimer = null;
@@ -530,6 +531,7 @@ moist | 潮湿的 | moisture 潮气
             this.recite.recalled = new Set(d.recalled || []);
             this.recite.collapsedDone = d.collapsedDone !== false;
             this.recite.selectedDay = d.selectedDay || null;
+            this.recite.dayCloudOpen = !!d.dayCloudOpen;
           } else {
             // 从 v1 迁移：保留计划参数（天数/开始日期），但 v1 的打卡是按索引存的，
             // 词表重新解析后索引失效，故打卡/回撤重置为空，避免错位。
@@ -554,7 +556,8 @@ moist | 潮湿的 | moisture 潮气
           checked: [...this.recite.checked],
           recalled: [...this.recite.recalled],
           collapsedDone: this.recite.collapsedDone,
-          selectedDay: this.recite.selectedDay
+          selectedDay: this.recite.selectedDay,
+          dayCloudOpen: this.recite.dayCloudOpen
         }));
         this.scheduleSyncPush();
       }
@@ -643,7 +646,7 @@ moist | 潮湿的 | moisture 潮气
               <i data-lucide="sliders-horizontal" class="w-5 h-5 text-indigo-600"></i>
               <h3 class="font-bold text-gray-900">制定计划</h3>
             </div>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-4">
               <div>
                 <label class="block text-xs font-medium text-gray-500 mb-1">总词数</label>
                 <div class="px-3 py-2 text-sm bg-gray-50 rounded-lg text-gray-700 font-medium">${total}</div>
@@ -683,19 +686,28 @@ moist | 潮湿的 | moisture 潮气
           <div class="fade-in">
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-bold text-gray-700">${dayHint}</h3>
+              <button type="button" onclick="app.gotoDay(${todayDay})" class="text-xs text-indigo-600 hover:underline ${selDay === todayDay ? 'invisible' : ''}">回到今天</button>
             </div>
-            <div class="flex flex-wrap gap-2 pb-2" id="recite-day-chips">
+            <!-- 上一天 / 第N天 / 下一天：手机桌面都好用，避免翻一长串 chips -->
+            <div class="flex items-center gap-2 mb-3">
+              <button type="button" onclick="app.gotoDay(${Math.max(1, selDay - 1)})" ${selDay <= 1 ? 'disabled' : ''} class="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 ${selDay <= 1 ? 'text-gray-300 bg-gray-50 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-50'}">‹ 上一天</button>
+              <div class="flex-1 text-center text-sm font-semibold text-gray-800">第 ${selDay} 天 / 共 ${days} 天</div>
+              <button type="button" onclick="app.gotoDay(${Math.min(days, selDay + 1)})" ${selDay >= days ? 'disabled' : ''} class="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 ${selDay >= days ? 'text-gray-300 bg-gray-50 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-50'}">下一天 ›</button>
+            </div>
+            <!-- 全部天数 chips：桌面常显；手机默认折叠，点开选具体天 -->
+            <div id="recite-day-cloud" class="flex flex-wrap gap-2 ${this.recite.dayCloudOpen ? '' : 'hidden'} md:!flex">
               ${Array.from({length: days}, (_, i) => {
                 const d = i + 1;
                 const done = this.dayDoneCount(d);
                 const wds = this.getDayWords(d).length;
                 const isSel = d === selDay;
                 const isToday = d === todayDay;
-                return `<button onclick="app.gotoDay(${d})" class="min-w-[3.5rem] px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${isSel ? 'bg-indigo-600 text-white border-indigo-600' : isToday ? 'bg-indigo-50 text-indigo-700 border-indigo-300' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}">
-                  ${d === todayDay ? '🔥' : ''}${d}<span class="opacity-70 ml-1">${done}/${wds}</span>
+                return `<button type="button" onclick="app.gotoDay(${d})" class="min-w-[2.75rem] px-2.5 py-2 rounded-lg text-xs font-medium border transition-colors ${isSel ? 'bg-indigo-600 text-white border-indigo-600' : isToday ? 'bg-indigo-50 text-indigo-700 border-indigo-300' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}">
+                  ${isToday ? '🔥' : ''}${d}<span class="${isSel ? 'text-white/80' : 'opacity-70'} ml-1">${done}/${wds}</span>
                 </button>`;
               }).join('')}
             </div>
+            <button type="button" onclick="app.toggleDayCloud()" class="md:hidden text-xs text-indigo-600 hover:underline mt-2">${this.recite.dayCloudOpen ? '收起全部天数 ▴' : '展开全部天数 ▾'}</button>
           </div>
 
           <!-- 待背列表 -->
@@ -723,7 +735,14 @@ moist | 潮湿的 | moisture 潮气
 
       gotoDay(d) {
         this.recite.selectedDay = d;
+        // 手机上选完某天后自动收起天数云，保持界面清爽（桌面常显不受影响）
+        if (window.innerWidth < 768) this.recite.dayCloudOpen = false;
         this.saveRecite();
+        this.renderRecite();
+      }
+
+      toggleDayCloud() {
+        this.recite.dayCloudOpen = !this.recite.dayCloudOpen;
         this.renderRecite();
       }
 
