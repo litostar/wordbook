@@ -474,6 +474,8 @@ moist | 潮湿的 | moisture 潮气
           selectedDay: null,
           dayCloudOpen: false
         };
+        // 背诵视图入场动画只播一次（切到该视图时），避免每次勾选/展开重播导致页面"上下跳"
+        this._reciteEntered = false;
         this.undoIndex = null;
         this.undoTimer = null;
         this.loadData();
@@ -515,7 +517,7 @@ moist | 潮湿的 | moisture 潮气
         ['view-manage', 'm-view-manage'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ' + (isRecite ? idleCls : activeCls); });
         ['view-recite', 'm-view-recite'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ' + (isRecite ? activeCls : idleCls); });
         this.closeDrawer();
-        if (isRecite) this.renderRecite();
+        if (isRecite) { this._reciteEntered = false; this.renderRecite(); }
       }
 
       // ===== Recite Plan =====
@@ -622,6 +624,9 @@ moist | 潮湿的 | moisture 潮气
           content.innerHTML = '<div class="text-center text-gray-400 py-16">词表正在加载…</div>';
           return;
         }
+        // 入场动画：仅首次进入背诵视图时播放一次；后续勾选/展开等状态更新不再重播，避免页面"上下跳"
+        const entrance = this._reciteEntered ? '' : 'fade-in';
+        this._reciteEntered = true;
         const checkedCount = this.recite.checked.size;
         const todayDay = this.todayDayNum();
         const selDay = this.recite.selectedDay || todayDay;
@@ -639,9 +644,9 @@ moist | 潮湿的 | moisture 潮气
         if (Math.floor((now - start)/86400000) < 0) dayHint = `尚未开始（开始于 ${this.recite.startDate}）· 预览第 ${selDay} 天`;
         else if (todayDay >= days) dayHint = `计划已完成 🎉（共 ${days} 天）`;
 
-        content.innerHTML = `
+        content.innerHTML = `<div class="${entrance}">
           <!-- 计划设置 -->
-          <div class="bg-white border border-gray-200 rounded-2xl p-5 fade-in">
+          <div class="bg-white border border-gray-200 rounded-2xl p-5">
             <div class="flex items-center gap-2 mb-4">
               <i data-lucide="sliders-horizontal" class="w-5 h-5 text-indigo-600"></i>
               <h3 class="font-bold text-gray-900">制定计划</h3>
@@ -671,7 +676,7 @@ moist | 潮湿的 | moisture 潮气
           </div>
 
           <!-- 总体进度 -->
-          <div class="bg-white border border-gray-200 rounded-2xl p-5 fade-in">
+          <div class="bg-white border border-gray-200 rounded-2xl p-5">
             <div class="flex items-center justify-between mb-2">
               <span class="text-sm font-semibold text-gray-700">总体进度</span>
               <span class="text-sm text-gray-500">已背 ${checkedCount} / ${total}</span>
@@ -683,7 +688,7 @@ moist | 潮湿的 | moisture 潮气
           </div>
 
           <!-- 天数导航 -->
-          <div class="fade-in">
+          <div>
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-bold text-gray-700">${dayHint}</h3>
               <button type="button" onclick="app.gotoDay(${todayDay})" class="text-xs text-indigo-600 hover:underline ${selDay === todayDay ? 'invisible' : ''}">回到今天</button>
@@ -711,7 +716,7 @@ moist | 潮湿的 | moisture 潮气
           </div>
 
           <!-- 待背列表 -->
-          <div class="fade-in">
+          <div>
             <div class="flex items-center justify-between mb-3">
               <h3 class="text-sm font-bold text-gray-700">第 ${selDay} 天 · 待背 ${toDo.length} 词${recalledCount ? ` · ${recalledCount} 个回撤` : ''}</h3>
               <button onclick="app.toggleRevealAll()" class="text-xs text-indigo-600 hover:underline">${allOpen ? '收起全部释义' : '展开全部释义'}</button>
@@ -721,7 +726,7 @@ moist | 潮湿的 | moisture 潮气
 
           <!-- 已背折叠区 -->
           ${done.length ? `
-          <div class="fade-in">
+          <div>
             <button onclick="app.toggleDoneCollapse()" class="w-full flex items-center justify-between px-4 py-2.5 rounded-xl bg-green-50 border border-green-200 text-sm font-medium text-green-700 hover:bg-green-100 transition-colors">
               <span>✓ 已背 ${done.length} 词（点击${this.recite.collapsedDone ? '展开' : '收起'}）</span>
               <i data-lucide="${this.recite.collapsedDone ? 'chevron-down' : 'chevron-up'}" class="w-4 h-4"></i>
@@ -729,6 +734,7 @@ moist | 潮湿的 | moisture 潮气
             ${this.recite.collapsedDone ? '' : `<div class="grid grid-cols-1 gap-2 mt-2">${done.map(w => this.renderReciteCard(w, 'done')).join('')}</div>`}
           </div>
           ` : ''}
+          </div>
         `;
         lucide.createIcons();
       }
