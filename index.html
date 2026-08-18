@@ -791,16 +791,16 @@ moist | 潮湿的 | moisture 潮气
         const isDone = mode === 'done';
         const recalled = mode === 'todo' && this.recite.recalled.has(w.word);
         const revealed = !!this.recite.reveal[w.word];
-        let cardCls = 'bg-white border rounded-xl p-4 transition-all ';
-        if (isDone) cardCls += 'border-green-300 bg-green-50/40';
-        else if (recalled) cardCls += 'border-orange-300 bg-orange-50/50';
-        else cardCls += 'border-gray-200';
+        let cardCls = 'bg-white border rounded-xl p-4 transition-all border-l-4 ';
+        if (isDone) cardCls += 'border-green-200 border-l-green-400 bg-green-50/40';
+        else if (recalled) cardCls += 'border-orange-200 border-l-orange-400 bg-orange-50/50';
+        else cardCls += 'border-gray-200 border-l-indigo-400';
         const leftBtn = isDone
           ? `<button type="button" onclick="app.recallWord('${this.jsQuote(w.word)}')" class="flex-shrink-0 mt-0.5 px-2.5 py-1 text-xs font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 rounded-lg" title="回撤到待背（说明没记住）">回撤</button>`
           : `<button type="button" onclick="app.toggleReciteCheck('${this.jsQuote(w.word)}')" class="flex-shrink-0 mt-0.5 w-6 h-6 rounded-md border-2 border-gray-300 hover:border-indigo-400 flex items-center justify-center transition-colors" title="标记已背"></button>`;
         const badge = isDone
           ? '<span class="px-2 py-0.5 rounded-md text-xs font-medium bg-green-100 text-green-700">已背</span>'
-          : (recalled ? '<span class="px-2 py-0.5 rounded-md text-xs font-medium bg-orange-100 text-orange-700">↩ 回撤·重点</span>' : '');
+          : (recalled ? '<span class="px-2 py-0.5 rounded-md text-xs font-medium bg-orange-100 text-orange-700">↩ 回撤·重点</span>' : '<span class="px-2 py-0.5 rounded-md text-xs font-medium bg-indigo-100 text-indigo-700">待背</span>');
         return `
           <div class="${cardCls}">
             <div class="flex items-start gap-3">
