@@ -228,6 +228,9 @@
             </div>
             <div class="flex items-center gap-2 flex-wrap">
               <span id="sync-status" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">未启用云同步</span>
+              <button onclick="app.syncNow()" class="px-3 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i><span>立即同步</span>
+              </button>
               <button onclick="app.exportRecite()" class="px-3 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
                 <i data-lucide="download" class="w-4 h-4"></i><span>导出进度</span>
               </button>
@@ -296,6 +299,9 @@
       </div>
     </main>
   </div>
+
+  <!-- 通用操作提示（同步完成等，2.5 秒自动消失） -->
+  <div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-24 z-[60] hidden px-4 py-2.5 rounded-xl bg-gray-900/85 backdrop-blur text-white text-sm font-medium shadow-xl"></div>
 
   <!-- Batch Action Bar (floating bottom) -->
   <div id="batch-bar" class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg hidden z-40">
@@ -550,6 +556,7 @@ moist | 潮湿的 | moisture 潮气
         this.loadData();
         this.loadRecite();
         this.loadPrep();
+        this._lastUpdatedAt = 0;
         if (this.syncEnabled()) {
           this.updateSyncStatus('同步中…', 'syncing');
           this.pullRecite();
@@ -1481,39 +1488,132 @@ moist | 潮湿的 | moisture 潮气
         }
         throw new Error('仓库检查失败：HTTP ' + res.status);
       }
+      serializeRecite() {
+        return {
+          days: this.recite.days,
+          startDate: this.recite.startDate,
+          checked: Array.from(this.recite.checked),
+          recalled: Array.from(this.recite.recalled),
+          marked: Array.from(this.recite.marked),
+          checkedAt: this.recite.checkedAt,
+          selectedDay: this.recite.selectedDay,
+          prep: {
+            examDate: this.prep.examDate,
+            target: this.prep.target,
+            currentTotal: this.prep.currentTotal,
+            testsTotal: this.prep.testsTotal,
+            testsDone: this.prep.testsDone,
+            writingGoal: this.prep.writingGoal,
+            writingDone: this.prep.writingDone,
+            speakingGoal: this.prep.speakingGoal,
+            speakingDone: this.prep.speakingDone,
+            daily: this.prep.daily
+          }
+        };
+      }
+
+      // 合并远程数据：进度类只增不减（并集/取 max），设置类以"较新的一方"为准
+      mergeRemote(remote) {
+        if (!remote || typeof remote !== 'object') return;
+        const localUpd = this._lastUpdatedAt || 0;
+        let remoteUpd = 0;
+        if (remote.updatedAt) {
+          const t = new Date(remote.updatedAt).getTime();
+          if (!isNaN(t)) remoteUpd = t;
+        }
+        const remoteNewer = remoteUpd > localUpd;
+        // —— 背诵进度（并集，绝不回退）——
+        if (Array.isArray(remote.checked)) remote.checked.forEach(w => { this.recite.checked.add(w); this.recite.recalled.delete(w); });
+        if (Array.isArray(remote.recalled)) remote.recalled.forEach(w => { this.recite.recalled.add(w); this.recite.checked.delete(w); });
+        if (Array.isArray(remote.marked)) remote.marked.forEach(w => this.recite.marked.add(w));
+        if (remote.checkedAt && typeof remote.checkedAt === 'object') {
+          for (const [w, dt] of Object.entries(remote.checkedAt)) {
+            if (!this.recite.checkedAt[w]) this.recite.checkedAt[w] = dt;
+          }
+        }
+        // —— 计划设置（天数/开始日/选中日）：较新端优先 ——
+        if (remoteNewer) {
+          if (remote.days) this.recite.days = remote.days;
+          if (remote.startDate) this.recite.startDate = remote.startDate;
+          if (remote.selectedDay) this.recite.selectedDay = remote.selectedDay;
+        }
+        // —— 备考计划 ——
+        if (remote.prep && typeof remote.prep === 'object') {
+          const rp = remote.prep;
+          if (remoteNewer) {
+            if (rp.examDate) this.prep.examDate = rp.examDate;
+            this.prep.target = Object.assign({}, this.prep.target, rp.target || {});
+            if (typeof rp.currentTotal === 'number') this.prep.currentTotal = rp.currentTotal;
+            if (typeof rp.testsTotal === 'number') this.prep.testsTotal = rp.testsTotal;
+            if (typeof rp.writingGoal === 'number') this.prep.writingGoal = rp.writingGoal;
+            if (typeof rp.speakingGoal === 'number') this.prep.speakingGoal = rp.speakingGoal;
+          }
+          // 进度类：取 max（只增不减）
+          if (rp.testsDone && typeof rp.testsDone === 'object') {
+            this.prep.testsDone.L = Math.max(this.prep.testsDone.L || 0, rp.testsDone.L || 0);
+            this.prep.testsDone.R = Math.max(this.prep.testsDone.R || 0, rp.testsDone.R || 0);
+          }
+          if (typeof rp.writingDone === 'number') this.prep.writingDone = Math.max(this.prep.writingDone || 0, rp.writingDone);
+          if (typeof rp.speakingDone === 'number') this.prep.speakingDone = Math.max(this.prep.speakingDone || 0, rp.speakingDone);
+          if (rp.daily && typeof rp.daily === 'object') Object.assign(this.prep.daily, rp.daily);
+        }
+        this._lastUpdatedAt = Math.max(localUpd, remoteUpd);
+      }
+
+      // 手动「立即同步」：先拉取合并，再推送，并弹提示确认完成
+      async syncNow() {
+        if (!this.syncEnabled()) {
+          this.updateSyncStatus('未启用云同步', 'idle');
+          this.showToast('未启用云同步：请到侧栏「云端同步」配置');
+          return;
+        }
+        this.updateSyncStatus('同步中…', 'syncing');
+        await this.pullRecite();
+        await this.pushRecite();
+        this.showToast('✅ 已同步 ' + this.nowHM());
+      }
+
+      showToast(msg) {
+        const el = document.getElementById('toast');
+        if (!el) return;
+        el.textContent = msg;
+        el.classList.remove('hidden');
+        clearTimeout(this._toastTimer);
+        this._toastTimer = setTimeout(() => el.classList.add('hidden'), 2500);
+      }
+
       async pushRecite() {
         if (!this.syncEnabled()) return;
         this.updateSyncStatus('同步中…', 'syncing');
         try {
           const c = this.loadSyncCfg();
-          const content = JSON.stringify({
-            days: this.recite.days,
-            startDate: this.recite.startDate,
-            checked: Array.from(this.recite.checked),
-            recalled: Array.from(this.recite.recalled),
-            selectedDay: this.recite.selectedDay,
-            prep: {
-              examDate: this.prep.examDate,
-              target: this.prep.target,
-              currentTotal: this.prep.currentTotal,
-              testsTotal: this.prep.testsTotal,
-              testsDone: this.prep.testsDone,
-              writingGoal: this.prep.writingGoal,
-              writingDone: this.prep.writingDone,
-              speakingGoal: this.prep.speakingGoal,
-              speakingDone: this.prep.speakingDone,
-              daily: this.prep.daily
-            },
-            updatedAt: new Date().toISOString()
-          }, null, 2);
           const filePath = '/repos/' + c.owner + '/' + c.repo + '/contents/' + c.path;
+          // 先拉取远程并合并（防止滞后端覆盖先进端；进度类只增不减）
           let sha = null;
           const head = await this.ghFetch('GET', filePath);
-          if (head.status === 200) { const j = await head.json(); sha = j.sha; }
-          const body = { message: 'sync recite progress', content: utf8ToBase64(content) };
+          if (head.status === 200) {
+            const j = await head.json();
+            sha = j.sha;
+            const remote = JSON.parse(base64ToUtf8(j.content));
+            this.mergeRemote(remote);
+          }
+          const now = new Date().toISOString();
+          const content = JSON.stringify(Object.assign({}, this.serializeRecite(), { updatedAt: now }), null, 2);
+          const body = { message: 'sync recite + prep progress', content: utf8ToBase64(content) };
           if (sha) body.sha = sha;
-          const res = await this.ghFetch('PUT', filePath, body);
+          let res = await this.ghFetch('PUT', filePath, body);
+          // 409 = 我读取后远程刚被另一设备改写 → 重新拉取合并再推一次
+          if (res.status === 409) {
+            const head2 = await this.ghFetch('GET', filePath);
+            if (head2.status === 200) {
+              const j2 = await head2.json();
+              this.mergeRemote(JSON.parse(base64ToUtf8(j2.content)));
+              const content2 = JSON.stringify(Object.assign({}, this.serializeRecite(), { updatedAt: new Date().toISOString() }), null, 2);
+              res = await this.ghFetch('PUT', filePath, { message: 'sync retry after conflict', content: utf8ToBase64(content2), sha: j2.sha });
+            }
+          }
           if (res.status === 200 || res.status === 201) {
+            this._lastUpdatedAt = new Date(now).getTime();
             this.updateSyncStatus('已同步 ' + this.nowHM(), 'ok');
           } else {
             this.updateSyncStatus('同步失败 ' + res.status, 'err');
@@ -1530,25 +1630,7 @@ moist | 潮湿的 | moisture 潮气
           const res = await this.ghFetch('GET', filePath);
           if (res.status !== 200) return;
           const j = await res.json();
-          const remote = JSON.parse(base64ToUtf8(j.content));
-          if (Array.isArray(remote.checked)) remote.checked.forEach(w => this.recite.checked.add(w));
-          if (Array.isArray(remote.recalled)) remote.recalled.forEach(w => { this.recite.recalled.add(w); this.recite.checked.delete(w); });
-          if (remote.days) this.recite.days = remote.days;
-          if (remote.startDate) this.recite.startDate = remote.startDate;
-          if (remote.selectedDay) this.recite.selectedDay = remote.selectedDay;
-          if (remote.prep) {
-            const rp = remote.prep;
-            if (rp.examDate) this.prep.examDate = rp.examDate;
-            this.prep.target = Object.assign({}, this.prep.target, rp.target || {});
-            if (typeof rp.currentTotal === 'number') this.prep.currentTotal = rp.currentTotal;
-            if (typeof rp.testsTotal === 'number') this.prep.testsTotal = rp.testsTotal;
-            this.prep.testsDone = Object.assign({}, this.prep.testsDone, rp.testsDone || {});
-            if (typeof rp.writingGoal === 'number') this.prep.writingGoal = rp.writingGoal;
-            if (typeof rp.writingDone === 'number') this.prep.writingDone = rp.writingDone;
-            if (typeof rp.speakingGoal === 'number') this.prep.speakingGoal = rp.speakingGoal;
-            if (typeof rp.speakingDone === 'number') this.prep.speakingDone = rp.speakingDone;
-            Object.assign(this.prep.daily, rp.daily || {});
-          }
+          this.mergeRemote(JSON.parse(base64ToUtf8(j.content)));
           this.saveRecite();
           this.savePrep();
           if (this.view === 'recite') this.renderRecite();
