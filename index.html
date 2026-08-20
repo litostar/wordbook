@@ -41,6 +41,7 @@
       <button onclick="app.setView('manage')" id="m-view-manage" class="px-2.5 py-1 rounded-md transition-colors text-gray-500">单词本</button>
       <button onclick="app.setView('recite')" id="m-view-recite" class="px-2.5 py-1 rounded-md transition-colors text-gray-500">背诵</button>
       <button onclick="app.setView('marked')" id="m-view-marked" class="px-2.5 py-1 rounded-md transition-colors text-gray-500">重点</button>
+      <button onclick="app.setView('prep')" id="m-view-prep" class="px-2.5 py-1 rounded-md transition-colors text-gray-500">备考</button>
     </div>
   </header>
 
@@ -56,18 +57,22 @@
           <h1 class="text-xl font-bold text-gray-900">🍑的单词本</h1>
         </div>
 
-        <div class="flex bg-gray-100 rounded-xl p-1 mb-6">
+        <div class="grid grid-cols-2 gap-1 mb-6">
           <button onclick="app.setView('manage')" id="view-manage" class="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors">
             <i data-lucide="book-open" class="w-4 h-4"></i>
             <span>单词本</span>
           </button>
           <button onclick="app.setView('recite')" id="view-recite" class="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors">
             <i data-lucide="calendar-check" class="w-4 h-4"></i>
-            <span>背诵计划</span>
+            <span>背诵</span>
           </button>
           <button onclick="app.setView('marked')" id="view-marked" class="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors">
             <i data-lucide="star" class="w-4 h-4"></i>
             <span>重点本</span>
+          </button>
+          <button onclick="app.setView('prep')" id="view-prep" class="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors">
+            <i data-lucide="target" class="w-4 h-4"></i>
+            <span>备考</span>
           </button>
         </div>
 
@@ -265,6 +270,27 @@
           </div>
         </header>
         <div id="marked-content" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 pb-28 hide-scrollbar">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+
+      <!-- Prep / Exam Plan View -->
+      <div id="prep-view" class="hidden flex-1 flex flex-col min-h-0">
+        <header class="bg-white border-b border-gray-200 px-4 md:px-6 py-4 md:sticky md:top-0 z-10">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-2">
+            <div>
+              <h2 class="text-lg font-bold text-gray-900">备考计划</h2>
+              <p class="text-sm text-gray-500 mt-0.5">倒计时 · 量化进度 · 每日任务</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span id="prep-countdown" class="text-xs px-2 py-1 rounded-full bg-indigo-50 text-indigo-700">距考试 -- 天</span>
+              <button onclick="app.togglePrepSettings()" class="px-3 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
+                <i data-lucide="settings" class="w-4 h-4"></i><span>备考设置</span>
+              </button>
+            </div>
+          </div>
+        </header>
+        <div id="prep-content" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 pb-28 hide-scrollbar">
           <!-- Rendered by JS -->
         </div>
       </div>
@@ -504,12 +530,26 @@ moist | 潮湿的 | moisture 潮气
           markedDoneCollapsed: true,
           checkedAt: {}
         };
+        this.prep = {
+          examDate: '2026-10-15',
+          target: { L: 7.5, R: 7.5, S: 6, W: 6 },
+          currentTotal: 6.5,
+          testsTotal: 44,
+          testsDone: { L: 0, R: 0 },
+          writingGoal: 24,
+          writingDone: 0,
+          speakingGoal: 56,
+          speakingDone: 0,
+          daily: {},
+          settingsOpen: false
+        };
         // 背诵视图入场动画只播一次（切到该视图时），避免每次勾选/展开重播导致页面"上下跳"
         this._reciteEntered = false;
         this.undoIndex = null;
         this.undoTimer = null;
         this.loadData();
         this.loadRecite();
+        this.loadPrep();
         if (this.syncEnabled()) {
           this.updateSyncStatus('同步中…', 'syncing');
           this.pullRecite();
@@ -536,27 +576,33 @@ moist | 潮湿的 | moisture 潮气
         this.view = v;
         const isRecite = v === 'recite';
         const isMarked = v === 'marked';
+        const isPrep = v === 'prep';
+        const hideManage = isRecite || isMarked || isPrep;
         const manageEls = ['manage-header', 'manage-addform', 'word-list', 'manage-categories'];
         manageEls.forEach(id => {
           const el = document.getElementById(id);
-          if (el) el.style.display = (isRecite || isMarked) ? 'none' : (id === 'word-list' ? 'block' : '');
+          if (el) el.style.display = hideManage ? 'none' : (id === 'word-list' ? 'block' : '');
         });
         document.getElementById('recite-view').style.display = isRecite ? 'flex' : 'none';
         document.getElementById('marked-view').style.display = isMarked ? 'flex' : 'none';
+        document.getElementById('prep-view').style.display = isPrep ? 'flex' : 'none';
         // 视图切换按钮高亮（桌面侧栏 + 手机顶栏）
         const activeCls = 'bg-white text-indigo-700 shadow-sm';
         const idleCls = 'text-gray-500 hover:bg-gray-200';
         ['view-manage', 'm-view-manage'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ' + (v === 'manage' ? activeCls : idleCls); });
         ['view-recite', 'm-view-recite'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ' + (isRecite ? activeCls : idleCls); });
         ['view-marked', 'm-view-marked'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ' + (isMarked ? activeCls : idleCls); });
+        ['view-prep', 'm-view-prep'].forEach(id => { const el = document.getElementById(id); if (el) el.className = 'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ' + (isPrep ? activeCls : idleCls); });
         this.closeDrawer();
         if (isRecite) { this._reciteEntered = false; this.renderRecite(); }
         if (isMarked) { this.renderMarked(); }
+        if (isPrep) { this.renderPrep(); }
       }
 
       renderCurrentView() {
         if (this.view === 'marked') this.renderMarked();
         else if (this.view === 'recite') this.renderRecite();
+        else if (this.view === 'prep') this.renderPrep();
         else this.render();
       }
 
@@ -608,6 +654,261 @@ moist | 潮湿的 | moisture 潮气
           checkedAt: this.recite.checkedAt
         }));
         this.scheduleSyncPush();
+      }
+
+      // ===== Prep / Exam Plan =====
+      loadPrep() {
+        try {
+          const raw = localStorage.getItem('wordbook_prep_v1');
+          if (raw) {
+            const d = JSON.parse(raw);
+            this.prep.examDate = d.examDate || this.prep.examDate;
+            this.prep.target = Object.assign({}, this.prep.target, d.target || {});
+            if (typeof d.currentTotal === 'number') this.prep.currentTotal = d.currentTotal;
+            if (typeof d.testsTotal === 'number') this.prep.testsTotal = d.testsTotal;
+            this.prep.testsDone = Object.assign({ L: 0, R: 0 }, d.testsDone || {});
+            if (typeof d.writingGoal === 'number') this.prep.writingGoal = d.writingGoal;
+            if (typeof d.writingDone === 'number') this.prep.writingDone = d.writingDone;
+            if (typeof d.speakingGoal === 'number') this.prep.speakingGoal = d.speakingGoal;
+            if (typeof d.speakingDone === 'number') this.prep.speakingDone = d.speakingDone;
+            this.prep.daily = d.daily || {};
+          }
+        } catch (e) {}
+      }
+
+      savePrep() {
+        localStorage.setItem('wordbook_prep_v1', JSON.stringify({
+          examDate: this.prep.examDate,
+          target: this.prep.target,
+          currentTotal: this.prep.currentTotal,
+          testsTotal: this.prep.testsTotal,
+          testsDone: this.prep.testsDone,
+          writingGoal: this.prep.writingGoal,
+          writingDone: this.prep.writingDone,
+          speakingGoal: this.prep.speakingGoal,
+          speakingDone: this.prep.speakingDone,
+          daily: this.prep.daily
+        }));
+        this.scheduleSyncPush();
+      }
+
+      prepLeftDays() {
+        if (!this.prep.examDate) return null;
+        const exam = new Date(this.prep.examDate + 'T00:00:00');
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        return Math.max(0, Math.round((exam - now) / 86400000));
+      }
+
+      prepStage(days) {
+        if (days == null) return { name: '未设置', cls: 'bg-gray-100 text-gray-500' };
+        if (days > 35) return { name: '基础期', cls: 'bg-indigo-50 text-indigo-700' };
+        if (days > 14) return { name: '强化期', cls: 'bg-amber-50 text-amber-700' };
+        return { name: '冲刺期', cls: 'bg-rose-50 text-rose-700' };
+      }
+
+      prepPct(done, total) {
+        return total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0;
+      }
+
+      renderPrep() {
+        const content = document.getElementById('prep-content');
+        if (!content) return;
+        const p = this.prep;
+        const t = p.target;
+        const leftDays = this.prepLeftDays();
+        const stage = this.prepStage(leftDays);
+        const totalWords = (window.VOCAB_IELTS || []).length;
+        const wordDone = this.recite.checked.size;
+        const wordLeft = Math.max(0, totalWords - wordDone);
+        const wordPerDay = leftDays > 0 ? Math.ceil(wordLeft / leftDays) : wordLeft;
+        const listenLeft = Math.max(0, p.testsTotal - p.testsDone.L);
+        const readLeft = Math.max(0, p.testsTotal - p.testsDone.R);
+        const speakLeft = Math.max(0, p.speakingGoal - p.speakingDone);
+        const writeLeft = Math.max(0, p.writingGoal - p.writingDone);
+        const today = this.todayStr();
+        const done = p.daily[today] || {};
+
+        // 头部倒计时
+        const countdown = leftDays == null ? '未设置考试日期'
+          : leftDays === 0 ? '今天就是考试日！'
+          : leftDays + ' 天';
+        const cdCls = leftDays == null ? 'text-gray-400'
+          : leftDays <= 7 ? 'text-rose-600'
+          : leftDays <= 14 ? 'text-rose-500'
+          : leftDays <= 35 ? 'text-amber-600'
+          : 'text-indigo-600';
+
+        // 目标分徽章
+        const badge = (k, label) => `<span class="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-semibold">${label} ${t[k] != null ? t[k] : '—'}</span>`;
+
+        // 量化进度面板
+        const bars = [
+          ['单词', wordDone, totalWords, 'bg-indigo-500'],
+          ['听力真题', p.testsDone.L, p.testsTotal, 'bg-emerald-500'],
+          ['阅读真题', p.testsDone.R, p.testsTotal, 'bg-sky-500'],
+          ['口语录音', p.speakingDone, p.speakingGoal, 'bg-violet-500'],
+          ['写作篇数', p.writingDone, p.writingGoal, 'bg-orange-500']
+        ].map(([name, d, tot, color]) => {
+          const pct = this.prepPct(d, tot);
+          return `<div class="bg-white border border-gray-200 rounded-2xl p-4">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-xs font-medium text-gray-500">${name}</span>
+              <span class="text-xs font-bold text-gray-800">${d}/${tot} · ${pct}%</span>
+            </div>
+            <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div class="h-full ${color} rounded-full transition-all" style="width:${pct}%"></div>
+            </div>
+            <p class="text-[11px] text-gray-400 mt-1.5">${(tot - d) > 0 ? '还剩 ' + (tot - d) + ' 未完成' : '✅ 已完成'}</p>
+          </div>`;
+        }).join('');
+
+        // 今日任务清单（剩余>0 才列出）
+        const taskKeys = [];
+        const mk = (key, label, sub, icon) => {
+          taskKeys.push(key);
+          const on = !!done[key];
+          tasks.push(`<button type="button" onclick="app.togglePrepTask('${key}')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-colors ${on ? 'border-green-300 bg-green-50/60' : 'border-gray-200 bg-white hover:border-indigo-300'}">
+            <span class="flex-shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center text-xs font-bold ${on ? 'border-green-500 bg-green-500 text-white' : 'border-gray-300 text-transparent'}">✓</span>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium ${on ? 'text-green-700 line-through' : 'text-gray-800'}">${label}</div>
+              ${sub ? `<div class="text-xs text-gray-400 mt-0.5">${sub}</div>` : ''}
+            </div>
+            <i data-lucide="${icon}" class="w-4 h-4 ${on ? 'text-green-600' : 'text-gray-400'}"></i>
+          </button>`);
+        };
+        const tasks = [];
+        if (wordLeft > 0) mk('word', `背单词 ${wordPerDay} 词`, `剩余 ${wordLeft} 词 · 剩 ${leftDays} 天`, 'book-open');
+        if (listenLeft > 0) mk('listen', '听力：真题 1 套 · 倍速 1.2-1.5x 精听', `剩余 ${listenLeft} 套 · 没听出先放慢 0.5x 再看原文`, 'headphones');
+        if (readLeft > 0) mk('read', '阅读：真题 1 套 · 平行阅读法', `剩余 ${readLeft} 套 · 控错 ≤10，先保正确率再提速`, 'glasses');
+        if (speakLeft > 0) mk('speak', '口语：录音 1 次并回听', `剩余 ${speakLeft} 次 · 雅思哥录音，背通用素材+串题`, 'mic');
+        if (writeLeft > 0) mk('write', '写作：1 篇', `剩余 ${writeLeft} 篇 · 目标每周 3 次；考前两周突击模板`, 'pen-tool');
+        const allDone = taskKeys.length > 0 && taskKeys.every(k => done[k]);
+        const taskHtml = tasks.join('');
+
+        // 设置折叠面板
+        const numInput = (id, val, extra) => `<input type="number" ${extra || ''} id="${id}" value="${val}" class="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">`;
+        const settingsPanel = p.settingsOpen ? `
+        <div class="bg-white border border-gray-200 rounded-2xl p-5">
+          <h3 class="text-sm font-bold text-gray-700 mb-3">备考设置</h3>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+            <label class="block col-span-2 md:col-span-4">
+              <span class="text-xs text-gray-500">考试日期（倒计时）</span>
+              <input type="date" id="prep-exam-date" value="${p.examDate || ''}" class="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+            </label>
+            <label><span class="text-xs text-gray-500">听力目标</span>${numInput('prep-target-L', t.L, 'step="0.5" min="1" max="9"')}</label>
+            <label><span class="text-xs text-gray-500">阅读目标</span>${numInput('prep-target-R', t.R, 'step="0.5" min="1" max="9"')}</label>
+            <label><span class="text-xs text-gray-500">口语目标</span>${numInput('prep-target-S', t.S, 'step="0.5" min="1" max="9"')}</label>
+            <label><span class="text-xs text-gray-500">写作目标</span>${numInput('prep-target-W', t.W, 'step="0.5" min="1" max="9"')}</label>
+            <label><span class="text-xs text-gray-500">真题总套数（剑9-19）</span>${numInput('prep-tests-total', p.testsTotal, 'min="1"')}</label>
+            <label><span class="text-xs text-gray-500">口语录音目标（次）</span>${numInput('prep-speak-goal', p.speakingGoal, 'min="1"')}</label>
+            <label><span class="text-xs text-gray-500">写作目标（篇）</span>${numInput('prep-write-goal', p.writingGoal, 'min="1"')}</label>
+            <label><span class="text-xs text-gray-500">当前总分</span>${numInput('prep-current-total', p.currentTotal, 'step="0.5" min="0" max="9"')}</label>
+            <label><span class="text-xs text-gray-500">听力已做（套）</span>${numInput('prep-listen-done', p.testsDone.L, 'min="0"')}</label>
+            <label><span class="text-xs text-gray-500">阅读已做（套）</span>${numInput('prep-read-done', p.testsDone.R, 'min="0"')}</label>
+            <label><span class="text-xs text-gray-500">口语已录（次）</span>${numInput('prep-speak-done', p.speakingDone, 'min="0"')}</label>
+            <label><span class="text-xs text-gray-500">写作已写（篇）</span>${numInput('prep-write-done', p.writingDone, 'min="0"')}</label>
+          </div>
+          <button onclick="app.savePrepSettings()" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg">保存设置</button>
+          <p class="text-xs text-gray-400 mt-2">默认：真题 44 套（剑9-19 共 11 本 × 4 套）、写作 24 篇（8 周 × 每周 3 次）、口语 56 次（每天 1 次录音）。可全部按你的实际调整。</p>
+        </div>` : '';
+
+        // 方法提示卡
+        const tips = `
+        <div class="bg-white border border-gray-200 rounded-2xl p-5">
+          <h3 class="text-sm font-bold text-gray-700 mb-3">🎯 各科方法提示</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div class="rounded-xl bg-rose-50/60 border border-rose-100 p-3">
+              <p class="text-xs font-bold text-rose-700 mb-1">听力 · 目标 ${t.L}</p>
+              <p class="text-xs text-gray-600 leading-relaxed">一次做一整套真题；很多没听出就放慢 0.5 倍速精听，实在听不出再看原文；平时 1.2-1.5x 倍速磨耳朵。</p>
+            </div>
+            <div class="rounded-xl bg-sky-50/60 border border-sky-100 p-3">
+              <p class="text-xs font-bold text-sky-700 mb-1">阅读 · 目标 ${t.R}</p>
+              <p class="text-xs text-gray-600 leading-relaxed">先不纠结时间，保证思路与正确率再提速；练定位答案句、排除干扰项（平行阅读法）；最终做到"文章看不懂也能做对"。</p>
+            </div>
+            <div class="rounded-xl bg-violet-50/60 border border-violet-100 p-3">
+              <p class="text-xs font-bold text-violet-700 mb-1">口语 · 目标 ${t.S}</p>
+              <p class="text-xs text-gray-600 leading-relaxed">背几个通用素材（愚+steve 干货）；用雅思哥录音并回听；一个素材多角度串题。</p>
+            </div>
+            <div class="rounded-xl bg-orange-50/60 border border-orange-100 p-3">
+              <p class="text-xs font-bold text-orange-700 mb-1">写作 · 目标 ${t.W}</p>
+              <p class="text-xs text-gray-600 leading-relaxed">考前两周突击模板（徐愿 9 分密钥）；小作文每题型练 2-3 遍（Vince/Simon）；大作文 6.5+ 模板只适用讨论类，其他题型用 GPT 总结新模板；改错看逻辑链而非只改语法，整理功能句。</p>
+            </div>
+          </div>
+        </div>`;
+
+        content.innerHTML = `
+          <!-- 倒计时 + 目标 -->
+          <div class="bg-white border border-gray-200 rounded-2xl p-5">
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p class="text-xs text-gray-400 mb-1">${p.examDate ? '考试日 ' + p.examDate : '未设置考试日期'} · 目标 7.0（当前 ${p.currentTotal != null ? p.currentTotal : '—'}）</p>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-3xl font-black ${cdCls}">${countdown}</span>
+                  <span class="text-sm text-gray-500">${p.examDate ? '还剩' : '→ 请点右上角「备考设置」'}</span>
+                  <span class="px-2 py-1 rounded-full text-xs font-semibold ${stage.cls}">${stage.name}</span>
+                </div>
+              </div>
+              <div class="flex gap-2 flex-wrap">${badge('L', '听力')}${badge('R', '阅读')}${badge('S', '口语')}${badge('W', '写作')}</div>
+            </div>
+          </div>
+
+          <!-- 量化进度 -->
+          <div>
+            <h3 class="text-sm font-bold text-gray-700 mb-2">量化进度</h3>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3">${bars}</div>
+          </div>
+
+          <!-- 今日任务 -->
+          <div class="bg-white border border-gray-200 rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-bold text-gray-700">今日任务 · ${today}</h3>
+              ${allDone ? '<span class="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-full">今日完成 🎉</span>' : ''}
+            </div>
+            <div class="space-y-2">${taskHtml || '<p class="text-sm text-gray-400 py-6 text-center">所有计划任务都已完成，去「重点本」复习吧 🎉</p>'}</div>
+            <p class="text-xs text-gray-400 mt-3">点任务打勾即保存（同步到云端）。「还有多少没做」看上方量化进度，剩余量会按天数自动折算到每日任务。</p>
+          </div>
+
+          ${tips}
+          ${settingsPanel}
+        `;
+        const cd = document.getElementById('prep-countdown');
+        if (cd) cd.textContent = leftDays == null ? '未设置日期' : '距考试 ' + leftDays + ' 天';
+        lucide.createIcons();
+      }
+
+      togglePrepSettings() {
+        this.prep.settingsOpen = !this.prep.settingsOpen;
+        this.renderPrep();
+      }
+
+      togglePrepTask(key) {
+        const today = this.todayStr();
+        if (!this.prep.daily[today]) this.prep.daily[today] = {};
+        this.prep.daily[today][key] = !this.prep.daily[today][key];
+        this.savePrep();
+        this.renderPrep();
+      }
+
+      savePrepSettings() {
+        const g = id => document.getElementById(id);
+        const num = (id, def) => { const el = g(id); if (!el) return def; const v = parseFloat(el.value); return isNaN(v) ? def : v; };
+        this.prep.examDate = (g('prep-exam-date') && g('prep-exam-date').value) || this.prep.examDate;
+        this.prep.target.L = num('prep-target-L', this.prep.target.L);
+        this.prep.target.R = num('prep-target-R', this.prep.target.R);
+        this.prep.target.S = num('prep-target-S', this.prep.target.S);
+        this.prep.target.W = num('prep-target-W', this.prep.target.W);
+        this.prep.currentTotal = num('prep-current-total', this.prep.currentTotal);
+        this.prep.testsTotal = num('prep-tests-total', this.prep.testsTotal);
+        this.prep.testsDone.L = num('prep-listen-done', this.prep.testsDone.L);
+        this.prep.testsDone.R = num('prep-read-done', this.prep.testsDone.R);
+        this.prep.speakingDone = num('prep-speak-done', this.prep.speakingDone);
+        this.prep.speakingGoal = num('prep-speak-goal', this.prep.speakingGoal);
+        this.prep.writingDone = num('prep-write-done', this.prep.writingDone);
+        this.prep.writingGoal = num('prep-write-goal', this.prep.writingGoal);
+        this.savePrep();
+        this.renderPrep();
+        alert('备考设置已保存');
       }
 
       computePlan() {
@@ -1034,7 +1335,19 @@ moist | 潮湿的 | moisture 潮气
           recalled: [...this.recite.recalled],
           marked: [...this.recite.marked],
           checkedAt: this.recite.checkedAt,
-          selectedDay: this.recite.selectedDay
+          selectedDay: this.recite.selectedDay,
+          prep: {
+            examDate: this.prep.examDate,
+            target: this.prep.target,
+            currentTotal: this.prep.currentTotal,
+            testsTotal: this.prep.testsTotal,
+            testsDone: this.prep.testsDone,
+            writingGoal: this.prep.writingGoal,
+            writingDone: this.prep.writingDone,
+            speakingGoal: this.prep.speakingGoal,
+            speakingDone: this.prep.speakingDone,
+            daily: this.prep.daily
+          }
         }, null, 2);
         const blob = new Blob([data], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -1059,8 +1372,22 @@ moist | 潮湿的 | moisture 潮气
             this.recite.marked = new Set(d.marked || []);
             this.recite.checkedAt = d.checkedAt || {};
             this.recite.selectedDay = d.selectedDay || this.todayDayNum();
+            if (d.prep) {
+              const rp = d.prep;
+              this.prep.examDate = rp.examDate || this.prep.examDate;
+              this.prep.target = Object.assign({}, this.prep.target, rp.target || {});
+              if (typeof rp.currentTotal === 'number') this.prep.currentTotal = rp.currentTotal;
+              if (typeof rp.testsTotal === 'number') this.prep.testsTotal = rp.testsTotal;
+              this.prep.testsDone = Object.assign({}, this.prep.testsDone, rp.testsDone || {});
+              if (typeof rp.writingGoal === 'number') this.prep.writingGoal = rp.writingGoal;
+              if (typeof rp.writingDone === 'number') this.prep.writingDone = rp.writingDone;
+              if (typeof rp.speakingGoal === 'number') this.prep.speakingGoal = rp.speakingGoal;
+              if (typeof rp.speakingDone === 'number') this.prep.speakingDone = rp.speakingDone;
+              this.prep.daily = Object.assign({}, this.prep.daily, rp.daily || {});
+            }
             this.saveRecite();
-            this.renderRecite();
+            this.savePrep();
+            this.renderCurrentView();
             alert('进度导入成功');
           } catch (err) {
             alert('导入失败：' + err.message);
@@ -1144,6 +1471,18 @@ moist | 潮湿的 | moisture 潮气
             checked: Array.from(this.recite.checked),
             recalled: Array.from(this.recite.recalled),
             selectedDay: this.recite.selectedDay,
+            prep: {
+              examDate: this.prep.examDate,
+              target: this.prep.target,
+              currentTotal: this.prep.currentTotal,
+              testsTotal: this.prep.testsTotal,
+              testsDone: this.prep.testsDone,
+              writingGoal: this.prep.writingGoal,
+              writingDone: this.prep.writingDone,
+              speakingGoal: this.prep.speakingGoal,
+              speakingDone: this.prep.speakingDone,
+              daily: this.prep.daily
+            },
             updatedAt: new Date().toISOString()
           }, null, 2);
           const filePath = '/repos/' + c.owner + '/' + c.repo + '/contents/' + c.path;
@@ -1176,8 +1515,23 @@ moist | 潮湿的 | moisture 潮气
           if (remote.days) this.recite.days = remote.days;
           if (remote.startDate) this.recite.startDate = remote.startDate;
           if (remote.selectedDay) this.recite.selectedDay = remote.selectedDay;
+          if (remote.prep) {
+            const rp = remote.prep;
+            if (rp.examDate) this.prep.examDate = rp.examDate;
+            this.prep.target = Object.assign({}, this.prep.target, rp.target || {});
+            if (typeof rp.currentTotal === 'number') this.prep.currentTotal = rp.currentTotal;
+            if (typeof rp.testsTotal === 'number') this.prep.testsTotal = rp.testsTotal;
+            this.prep.testsDone = Object.assign({}, this.prep.testsDone, rp.testsDone || {});
+            if (typeof rp.writingGoal === 'number') this.prep.writingGoal = rp.writingGoal;
+            if (typeof rp.writingDone === 'number') this.prep.writingDone = rp.writingDone;
+            if (typeof rp.speakingGoal === 'number') this.prep.speakingGoal = rp.speakingGoal;
+            if (typeof rp.speakingDone === 'number') this.prep.speakingDone = rp.speakingDone;
+            Object.assign(this.prep.daily, rp.daily || {});
+          }
           this.saveRecite();
+          this.savePrep();
           if (this.view === 'recite') this.renderRecite();
+          if (this.view === 'prep') this.renderPrep();
           this.updateSyncStatus('已同步 ' + this.nowHM(), 'ok');
         } catch (e) {
           // 拉取失败不阻断本地使用
