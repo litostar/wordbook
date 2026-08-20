@@ -986,29 +986,29 @@ moist | 潮湿的 | moisture 潮气
           return `
           <div class="bg-white border border-gray-200 rounded-2xl p-5">
             <div class="flex items-center justify-between gap-2 flex-wrap mb-2">
-              <h3 class="text-sm font-bold text-gray-700">📋 刷题计划 · 按剩余 ${leftDays} 天</h3>
-              <span class="text-[10px] text-gray-400">专家建议：精做 &gt; 刷完，质量优先</span>
+              <h3 class="text-base font-bold text-gray-700">📋 刷题计划 · 按剩余 ${leftDays} 天</h3>
+              <span class="text-xs text-gray-400">专家建议：精做 &gt; 刷完，质量优先</span>
             </div>
             <div class="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5 mb-3">
-              <p class="text-xs text-amber-800 leading-relaxed">${totalL + totalR} 套（听 ${totalL} + 读 ${totalR}）<b>全刷完不现实</b>：需要每天听 + 读各 1 套且几乎无休。按优先级精做 <b>约 ${mustL + mustR + hiL + hiR} 套起步</b>（每科 24 套）就足以冲 7.5，关键是每套错题复盘到位，而不是追求刷完。</p>
+              <p class="text-sm text-amber-800 leading-relaxed">${totalL + totalR} 套（听 ${totalL} + 读 ${totalR}）<b>全刷完不现实</b>：需要每天听 + 读各 1 套且几乎无休。按优先级精做 <b>约 ${mustL + mustR + hiL + hiR} 套起步</b>（每科 24 套）就足以冲 7.5，关键是每套错题复盘到位，而不是追求刷完。</p>
             </div>
             <div class="space-y-2 mb-3">${stages.map((s, i) => `
               <div class="rounded-xl border p-3 ${i === cur ? 'border-indigo-200 bg-indigo-50/60' : 'border-gray-100 bg-gray-50/50'}">
                 <div class="flex items-center gap-2 flex-wrap mb-0.5">
-                  <span class="text-xs font-bold ${i === cur ? 'text-indigo-700' : 'text-gray-500'}">${s.name}</span>
-                  <span class="text-[10px] text-gray-400">${s.span}</span>
-                  <span class="text-[10px] px-1.5 py-0.5 rounded-full ${i === cur ? 'bg-indigo-600 text-white font-semibold' : 'bg-gray-200 text-gray-500'}">${s.books}</span>
-                  ${i === cur ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-white text-indigo-600 font-semibold border border-indigo-200">当前阶段</span>' : ''}
+                  <span class="text-sm font-bold ${i === cur ? 'text-indigo-700' : 'text-gray-500'}">${s.name}</span>
+                  <span class="text-xs text-gray-400">${s.span}</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded-full ${i === cur ? 'bg-indigo-600 text-white font-semibold' : 'bg-gray-200 text-gray-500'}">${s.books}</span>
+                  ${i === cur ? '<span class="text-xs px-1.5 py-0.5 rounded-full bg-white text-indigo-600 font-semibold border border-indigo-200">当前阶段</span>' : ''}
                 </div>
-                <p class="text-[11px] ${i === cur ? 'text-indigo-900' : 'text-gray-500'}">${s.tip}</p>
+                <p class="text-sm ${i === cur ? 'text-indigo-900' : 'text-gray-500'}">${s.tip}</p>
               </div>`).join('')}</div>
-            <div class="text-[11px] text-gray-600 space-y-1">
+            <div class="text-sm text-gray-600 space-y-1.5">
               <p><span class="text-red-500 font-bold">🔴 必刷 · 提分主力</span> 剑16-18 + 剑21（听 ${mustL} 套 / 读 ${mustR} 套）— 最接近当前考情，错题必须复盘</p>
               <p><span class="text-orange-500 font-bold">🟠 高优先 · 考前手感</span> 剑19-20（听 ${hiL} / 读 ${hiR}）— 留冲刺段全真模考</p>
               <p><span class="text-yellow-600 font-bold">🟡 选刷 · 时间富余再刷</span> 剑11-15（听 ${selL} / 读 ${selR}）— 基础适应期挑着做，做不完没关系</p>
               ${skipL ? `<p><span class="text-gray-400 font-bold">⚪ 可跳过</span> 剑9-10（听 ${skipL}）— 旧题，时间不够别碰</p>` : ''}
             </div>
-            <p class="text-[11px] text-gray-500 mt-3 border-t border-gray-100 pt-2">⏱ 每日节奏建议：听力 1 套（做题 30min + 精听错题）+ 阅读 1 套（卡时 60min + 复盘）≈ 2.5-3h；每周至少留 1 天只复盘错题、不刷新题。当天任务看上方「今日任务」清单。</p>
+            <p class="text-sm text-gray-500 mt-3 border-t border-gray-100 pt-2">⏱ 每日节奏建议：听力 1 套（做题 30min + 精听错题）+ 阅读 1 套（卡时 60min + 复盘）≈ 2.5-3h；每周至少留 1 天只复盘错题、不刷新题。当天任务看上方「今日任务」清单。</p>
           </div>`;
         })();
 
