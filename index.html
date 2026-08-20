@@ -542,6 +542,13 @@ moist | 潮湿的 | moisture 潮气
           currentTotal: 6.5,
           testsTotal: 44,
           testsDone: { L: 0, R: 0 },
+          listenBooks: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+          readBooks: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+          listenDone: new Set(),
+          readDone: new Set(),
+          listenDoneAt: {},
+          readDoneAt: {},
+          diary: {},
           writingGoal: 24,
           writingDone: 0,
           speakingGoal: 56,
@@ -679,6 +686,13 @@ moist | 潮湿的 | moisture 潮气
             if (typeof d.speakingGoal === 'number') this.prep.speakingGoal = d.speakingGoal;
             if (typeof d.speakingDone === 'number') this.prep.speakingDone = d.speakingDone;
             this.prep.daily = d.daily || {};
+            if (Array.isArray(d.listenBooks) && d.listenBooks.length) this.prep.listenBooks = d.listenBooks;
+            if (Array.isArray(d.readBooks) && d.readBooks.length) this.prep.readBooks = d.readBooks;
+            this.prep.listenDone = new Set(d.listenDone || []);
+            this.prep.readDone = new Set(d.readDone || []);
+            this.prep.listenDoneAt = d.listenDoneAt || {};
+            this.prep.readDoneAt = d.readDoneAt || {};
+            this.prep.diary = d.diary || {};
           }
         } catch (e) {}
       }
@@ -690,6 +704,13 @@ moist | 潮湿的 | moisture 潮气
           currentTotal: this.prep.currentTotal,
           testsTotal: this.prep.testsTotal,
           testsDone: this.prep.testsDone,
+          listenBooks: this.prep.listenBooks,
+          readBooks: this.prep.readBooks,
+          listenDone: [...this.prep.listenDone],
+          readDone: [...this.prep.readDone],
+          listenDoneAt: this.prep.listenDoneAt,
+          readDoneAt: this.prep.readDoneAt,
+          diary: this.prep.diary,
           writingGoal: this.prep.writingGoal,
           writingDone: this.prep.writingDone,
           speakingGoal: this.prep.speakingGoal,
@@ -729,8 +750,14 @@ moist | 潮湿的 | moisture 潮气
         const wordDone = this.recite.checked.size;
         const wordLeft = Math.max(0, totalWords - wordDone);
         const wordPerDay = leftDays > 0 ? Math.ceil(wordLeft / leftDays) : wordLeft;
-        const listenLeft = Math.max(0, p.testsTotal - p.testsDone.L);
-        const readLeft = Math.max(0, p.testsTotal - p.testsDone.R);
+        const listenTotal = p.listenBooks.length * 4;
+        const readTotal = p.readBooks.length * 4;
+        const listenDoneCount = p.listenDone.size;
+        const readDoneCount = p.readDone.size;
+        const listenLeft = Math.max(0, listenTotal - listenDoneCount);
+        const readLeft = Math.max(0, readTotal - readDoneCount);
+        const listenPerDay = leftDays > 0 ? Math.min(listenLeft, Math.max(1, Math.ceil(listenLeft / leftDays))) : listenLeft;
+        const readPerDay = leftDays > 0 ? Math.min(readLeft, Math.max(1, Math.ceil(readLeft / leftDays))) : readLeft;
         const speakLeft = Math.max(0, p.speakingGoal - p.speakingDone);
         const writeLeft = Math.max(0, p.writingGoal - p.writingDone);
         const today = this.todayStr();
@@ -738,6 +765,7 @@ moist | 潮湿的 | moisture 潮气
         const plan = this.computePlan();
         const perDay = plan.perDay;
         const wordAutoDone = this.todayRecitedCount() >= perDay;
+        this.updateDiaryToday();
 
         // 头部倒计时
         const countdown = leftDays == null ? '未设置考试日期'
@@ -755,8 +783,8 @@ moist | 潮湿的 | moisture 潮气
         // 量化进度面板
         const bars = [
           ['单词', wordDone, totalWords, 'bg-indigo-500'],
-          ['听力真题', p.testsDone.L, p.testsTotal, 'bg-emerald-500'],
-          ['阅读真题', p.testsDone.R, p.testsTotal, 'bg-sky-500'],
+          ['听力真题', listenDoneCount, listenTotal, 'bg-emerald-500'],
+          ['阅读真题', readDoneCount, readTotal, 'bg-sky-500'],
           ['口语录音', p.speakingDone, p.speakingGoal, 'bg-violet-500'],
           ['写作篇数', p.writingDone, p.writingGoal, 'bg-orange-500']
         ].map(([name, d, tot, color]) => {
@@ -772,6 +800,67 @@ moist | 潮湿的 | moisture 潮气
             <p class="text-[11px] text-gray-400 mt-1.5">${(tot - d) > 0 ? '还剩 ' + (tot - d) + ' 未完成' : '✅ 已完成'}</p>
           </div>`;
         }).join('');
+
+        // 真题打卡：按「剑号 × Test1-4」打勾（像背单词一样）
+        const testBoardHtml = (kind, label, books, done, accent) => {
+          const rows = books.map(b => {
+            const tbtns = [1, 2, 3, 4].map(t => {
+              const k = `${kind}-${b}-T${t}`;
+              const on = done.has(k);
+              return `<button type="button" onclick="app.toggleTestDone('${kind}',${b},${t})" title="剑${b} Test${t}" class="px-2 py-1 rounded-md text-xs font-semibold border transition-colors ${on ? 'border-green-500 bg-green-500 text-white' : 'border-gray-200 bg-white text-gray-500 hover:border-green-400 hover:text-green-600'}">T${t}</button>`;
+            }).join('');
+            const cnt = [1, 2, 3, 4].filter(t => done.has(`${kind}-${b}-T${t}`)).length;
+            return `<div class="flex items-center gap-2 py-1.5">
+              <span class="w-12 flex-shrink-0 text-xs font-bold text-gray-600">剑${b}</span>
+              <div class="flex gap-1.5 flex-wrap">${tbtns}</div>
+              <span class="ml-auto text-[10px] text-gray-400 flex-shrink-0">${cnt}/4</span>
+            </div>`;
+          }).join('');
+          return `<div class="bg-white border border-gray-200 rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-sm font-bold text-gray-700">${label}</h3>
+              <span class="text-xs font-semibold px-2 py-1 rounded-full ${accent.bg} ${accent.fg}">${done.size}/${books.length * 4} 套</span>
+            </div>
+            <div class="divide-y divide-gray-50">${rows}</div>
+            <p class="text-[11px] text-gray-400 mt-2">点 T1-T4 打勾 = 练完这套；自动计入今日日记，并按剩余天数折算每日建议。</p>
+          </div>`;
+        };
+        const testBoard = `<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          ${testBoardHtml('L', '🎧 听力真题 · 剑' + p.listenBooks[0] + '-' + p.listenBooks[p.listenBooks.length - 1], p.listenBooks, p.listenDone, { bg: 'bg-emerald-50', fg: 'text-emerald-700' })}
+          ${testBoardHtml('R', '📖 阅读真题 · 剑' + p.readBooks[0] + '-' + p.readBooks[p.readBooks.length - 1], p.readBooks, p.readDone, { bg: 'bg-sky-50', fg: 'text-sky-700' })}
+        </div>`;
+
+        // 备考日记：今日自动统计 + 历史回看
+        const todayDiary = p.diary[today] || {};
+        const diaryHistory = Object.entries(p.diary).sort((a, b) => (a[0] < b[0] ? 1 : -1)).slice(0, 14);
+        const diaryRows = diaryHistory.map(([d, r]) => {
+          const chips = [
+            r.word ? `词 ${r.word}` : null,
+            r.listen ? `听 ${r.listen}套` : null,
+            r.read ? `读 ${r.read}套` : null,
+            r.write ? `写 ${r.write}篇` : null,
+            r.speak ? `口 ${r.speak}次` : null
+          ].filter(Boolean).join(' · ');
+          return `<div class="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
+            <span class="text-xs font-semibold text-gray-600 w-24 flex-shrink-0">${d}</span>
+            <span class="text-xs text-gray-500">${chips || '无记录'}</span>
+          </div>`;
+        }).join('');
+        const diaryBlock = `
+        <div class="bg-white border border-gray-200 rounded-2xl p-5">
+          <h3 class="text-sm font-bold text-gray-700 mb-3">📔 备考日记</h3>
+          <div class="flex items-center gap-2 flex-wrap mb-2">
+            <span class="text-xs text-gray-500">今日：</span>
+            ${todayDiary.word ? `<span class="text-xs px-2 py-1 rounded-full bg-indigo-50 text-indigo-700">单词 ${todayDiary.word}</span>` : ''}
+            ${todayDiary.listen ? `<span class="text-xs px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">听力 ${todayDiary.listen} 套</span>` : ''}
+            ${todayDiary.read ? `<span class="text-xs px-2 py-1 rounded-full bg-sky-50 text-sky-700">阅读 ${todayDiary.read} 套</span>` : ''}
+            ${todayDiary.write ? `<span class="text-xs px-2 py-1 rounded-full bg-orange-50 text-orange-700">写作 ${todayDiary.write} 篇</span>` : ''}
+            ${todayDiary.speak ? `<span class="text-xs px-2 py-1 rounded-full bg-violet-50 text-violet-700">口语 ${todayDiary.speak} 次</span>` : ''}
+            ${!todayDiary.word && !todayDiary.listen && !todayDiary.read && !todayDiary.write && !todayDiary.speak ? '<span class="text-xs text-gray-400">今天还没记录，开始背词 / 打卡吧</span>' : ''}
+          </div>
+          <p class="text-[11px] text-gray-400 mb-3">每天工作量自动汇总：单词 = 今日背诵数；听力/阅读 = 今日打卡套数；写作/口语 = 今日任务勾选。历史记录如下（近 14 天）。</p>
+          <div>${diaryRows || '<p class="text-xs text-gray-400">还没有历史记录</p>'}</div>
+        </div>`;
 
         // 今日任务清单（剩余>0 才列出）
         const taskKeys = [];
@@ -793,8 +882,8 @@ moist | 潮湿的 | moisture 潮气
           wordAutoDone ? '背单词' : `背单词 ${wordPerDay} 词`,
           wordAutoDone ? `今日已背 ${this.todayRecitedCount()} / ${perDay} 词 · 背诵达标，自动完成 ✓` : `剩余 ${wordLeft} 词 · 剩 ${leftDays} 天`,
           'book-open', wordAutoDone);
-        if (listenLeft > 0) mk('listen', '听力：真题 1 套 · 倍速 1.2-1.5x 精听', `剩余 ${listenLeft} 套 · 没听出先放慢 0.5x 再看原文`, 'headphones');
-        if (readLeft > 0) mk('read', '阅读：真题 1 套 · 平行阅读法', `剩余 ${readLeft} 套 · 控错 ≤10，先保正确率再提速`, 'glasses');
+        if (listenLeft > 0) mk('listen', `听力：真题 ${listenPerDay} 套 · 倍速 1.2-1.5x 精听`, `剩余 ${listenLeft} 套 · 没听出先放慢 0.5x 再看原文`, 'headphones');
+        if (readLeft > 0) mk('read', `阅读：真题 ${readPerDay} 套 · 平行阅读法`, `剩余 ${readLeft} 套 · 控错 ≤10，先保正确率再提速`, 'glasses');
         if (speakLeft > 0) mk('speak', '口语：录音 1 次并回听', `剩余 ${speakLeft} 次 · 雅思哥录音，背通用素材+串题`, 'mic');
         if (writeLeft > 0) mk('write', '写作：1 篇', `剩余 ${writeLeft} 篇 · 目标每周 3 次；考前两周突击模板`, 'pen-tool');
         const allDone = taskKeys.length > 0 && taskKeys.every(k => done[k] || (k === 'word' && wordAutoDone));
@@ -814,17 +903,18 @@ moist | 潮湿的 | moisture 潮气
             <label><span class="text-xs text-gray-500">阅读目标</span>${numInput('prep-target-R', t.R, 'step="0.5" min="1" max="9"')}</label>
             <label><span class="text-xs text-gray-500">口语目标</span>${numInput('prep-target-S', t.S, 'step="0.5" min="1" max="9"')}</label>
             <label><span class="text-xs text-gray-500">写作目标</span>${numInput('prep-target-W', t.W, 'step="0.5" min="1" max="9"')}</label>
-            <label><span class="text-xs text-gray-500">真题总套数（剑9-19）</span>${numInput('prep-tests-total', p.testsTotal, 'min="1"')}</label>
+            <label><span class="text-xs text-gray-500">听力书籍范围 起（剑）</span>${numInput('prep-listen-books-from', p.listenBooks[0], 'min="1" max="30"')}</label>
+            <label><span class="text-xs text-gray-500">听力书籍范围 止（剑）</span>${numInput('prep-listen-books-to', p.listenBooks[p.listenBooks.length - 1], 'min="1" max="30"')}</label>
+            <label><span class="text-xs text-gray-500">阅读书籍范围 起（剑）</span>${numInput('prep-read-books-from', p.readBooks[0], 'min="1" max="30"')}</label>
+            <label><span class="text-xs text-gray-500">阅读书籍范围 止（剑）</span>${numInput('prep-read-books-to', p.readBooks[p.readBooks.length - 1], 'min="1" max="30"')}</label>
             <label><span class="text-xs text-gray-500">口语录音目标（次）</span>${numInput('prep-speak-goal', p.speakingGoal, 'min="1"')}</label>
             <label><span class="text-xs text-gray-500">写作目标（篇）</span>${numInput('prep-write-goal', p.writingGoal, 'min="1"')}</label>
             <label><span class="text-xs text-gray-500">当前总分</span>${numInput('prep-current-total', p.currentTotal, 'step="0.5" min="0" max="9"')}</label>
-            <label><span class="text-xs text-gray-500">听力已做（套）</span>${numInput('prep-listen-done', p.testsDone.L, 'min="0"')}</label>
-            <label><span class="text-xs text-gray-500">阅读已做（套）</span>${numInput('prep-read-done', p.testsDone.R, 'min="0"')}</label>
             <label><span class="text-xs text-gray-500">口语已录（次）</span>${numInput('prep-speak-done', p.speakingDone, 'min="0"')}</label>
             <label><span class="text-xs text-gray-500">写作已写（篇）</span>${numInput('prep-write-done', p.writingDone, 'min="0"')}</label>
           </div>
           <button onclick="app.savePrepSettings()" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg">保存设置</button>
-          <p class="text-xs text-gray-400 mt-2">默认：真题 44 套（剑9-19 共 11 本 × 4 套）、写作 24 篇（8 周 × 每周 3 次）、口语 56 次（每天 1 次录音）。可全部按你的实际调整。</p>
+          <p class="text-xs text-gray-400 mt-2">听力默认剑 9-21（13 本 × 4 套 = 52 套）、阅读默认剑 11-21（11 本 × 4 套 = 44 套）。套数进度在下方「真题打卡」里点勾，无需手填。口语 56 次（每天 1 次录音）、写作 24 篇（每周 3 次）。</p>
         </div>` : '';
 
         // 方法提示卡
@@ -873,7 +963,13 @@ moist | 潮湿的 | moisture 潮气
             <div class="grid grid-cols-2 md:grid-cols-5 gap-3">${bars}</div>
           </div>
 
+          <!-- 真题打卡（剑号 × Test 打勾） -->
+          ${testBoard}
+
           ${settingsPanel}
+
+          <!-- 备考日记 -->
+          ${diaryBlock}
 
           <!-- 今日任务 -->
           <div class="bg-white border border-gray-200 rounded-2xl p-5">
@@ -907,8 +1003,44 @@ moist | 潮湿的 | moisture 潮气
         const today = this.todayStr();
         if (!this.prep.daily[today]) this.prep.daily[today] = {};
         this.prep.daily[today][key] = !this.prep.daily[today][key];
+        this.updateDiaryToday();
         this.savePrep();
         this.renderPrep();
+      }
+
+      // 真题打卡：kind = 'L' 听力 / 'R' 阅读；book = 剑号；test = 1-4
+      toggleTestDone(kind, book, test) {
+        const key = kind + '-' + book + '-T' + test;
+        const set = kind === 'L' ? this.prep.listenDone : this.prep.readDone;
+        const at = kind === 'L' ? this.prep.listenDoneAt : this.prep.readDoneAt;
+        const today = this.todayStr();
+        if (set.has(key)) { set.delete(key); delete at[key]; }
+        else { set.add(key); at[key] = today; }
+        this.updateDiaryToday();
+        this.savePrep();
+        this.renderPrep();
+      }
+
+      // 备考日记：把今天的工作量（背词/听读套数/写口）汇总进 diary[today]
+      updateDiaryToday() {
+        const today = this.todayStr();
+        const done = this.prep.daily[today] || {};
+        const countToday = (at) => Object.values(at || {}).filter(d => d === today).length;
+        this.prep.diary[today] = {
+          word: this.todayRecitedCount(),
+          listen: countToday(this.prep.listenDoneAt),
+          read: countToday(this.prep.readDoneAt),
+          write: done.write ? 1 : 0,
+          speak: done.speak ? 1 : 0
+        };
+      }
+
+      buildBookRange(from, to) {
+        const lo = Math.max(1, Math.min(from, to));
+        const hi = Math.max(1, Math.max(from, to));
+        const arr = [];
+        for (let i = lo; i <= hi; i++) arr.push(i);
+        return arr;
       }
 
       savePrepSettings() {
@@ -920,13 +1052,13 @@ moist | 潮湿的 | moisture 潮气
         this.prep.target.S = num('prep-target-S', this.prep.target.S);
         this.prep.target.W = num('prep-target-W', this.prep.target.W);
         this.prep.currentTotal = num('prep-current-total', this.prep.currentTotal);
-        this.prep.testsTotal = num('prep-tests-total', this.prep.testsTotal);
-        this.prep.testsDone.L = num('prep-listen-done', this.prep.testsDone.L);
-        this.prep.testsDone.R = num('prep-read-done', this.prep.testsDone.R);
+        this.prep.listenBooks = this.buildBookRange(num('prep-listen-books-from', this.prep.listenBooks[0]), num('prep-listen-books-to', this.prep.listenBooks[this.prep.listenBooks.length - 1]));
+        this.prep.readBooks = this.buildBookRange(num('prep-read-books-from', this.prep.readBooks[0]), num('prep-read-books-to', this.prep.readBooks[this.prep.readBooks.length - 1]));
         this.prep.speakingDone = num('prep-speak-done', this.prep.speakingDone);
         this.prep.speakingGoal = num('prep-speak-goal', this.prep.speakingGoal);
         this.prep.writingDone = num('prep-write-done', this.prep.writingDone);
         this.prep.writingGoal = num('prep-write-goal', this.prep.writingGoal);
+        this.updateDiaryToday();
         this.savePrep();
         this.renderPrep();
         alert('备考设置已保存');
@@ -1364,6 +1496,13 @@ moist | 潮湿的 | moisture 潮气
             currentTotal: this.prep.currentTotal,
             testsTotal: this.prep.testsTotal,
             testsDone: this.prep.testsDone,
+            listenBooks: this.prep.listenBooks,
+            readBooks: this.prep.readBooks,
+            listenDone: [...this.prep.listenDone],
+            readDone: [...this.prep.readDone],
+            listenDoneAt: this.prep.listenDoneAt,
+            readDoneAt: this.prep.readDoneAt,
+            diary: this.prep.diary,
             writingGoal: this.prep.writingGoal,
             writingDone: this.prep.writingDone,
             speakingGoal: this.prep.speakingGoal,
@@ -1406,6 +1545,13 @@ moist | 潮湿的 | moisture 潮气
               if (typeof rp.speakingGoal === 'number') this.prep.speakingGoal = rp.speakingGoal;
               if (typeof rp.speakingDone === 'number') this.prep.speakingDone = rp.speakingDone;
               this.prep.daily = Object.assign({}, this.prep.daily, rp.daily || {});
+              if (Array.isArray(rp.listenBooks) && rp.listenBooks.length) this.prep.listenBooks = rp.listenBooks;
+              if (Array.isArray(rp.readBooks) && rp.readBooks.length) this.prep.readBooks = rp.readBooks;
+              this.prep.listenDone = new Set(rp.listenDone || []);
+              this.prep.readDone = new Set(rp.readDone || []);
+              this.prep.listenDoneAt = Object.assign({}, this.prep.listenDoneAt, rp.listenDoneAt || {});
+              this.prep.readDoneAt = Object.assign({}, this.prep.readDoneAt, rp.readDoneAt || {});
+              this.prep.diary = Object.assign({}, this.prep.diary, rp.diary || {});
             }
             if (Array.isArray(d.words)) {
               this.state.words = d.words;
@@ -1503,6 +1649,13 @@ moist | 潮湿的 | moisture 潮气
             currentTotal: this.prep.currentTotal,
             testsTotal: this.prep.testsTotal,
             testsDone: this.prep.testsDone,
+            listenBooks: this.prep.listenBooks,
+            readBooks: this.prep.readBooks,
+            listenDone: Array.from(this.prep.listenDone),
+            readDone: Array.from(this.prep.readDone),
+            listenDoneAt: this.prep.listenDoneAt,
+            readDoneAt: this.prep.readDoneAt,
+            diary: this.prep.diary,
             writingGoal: this.prep.writingGoal,
             writingDone: this.prep.writingDone,
             speakingGoal: this.prep.speakingGoal,
@@ -1556,6 +1709,17 @@ moist | 潮湿的 | moisture 潮气
           if (typeof rp.writingDone === 'number') this.prep.writingDone = Math.max(this.prep.writingDone || 0, rp.writingDone);
           if (typeof rp.speakingDone === 'number') this.prep.speakingDone = Math.max(this.prep.speakingDone || 0, rp.speakingDone);
           if (rp.daily && typeof rp.daily === 'object') Object.assign(this.prep.daily, rp.daily);
+          // 真题打卡 + 日记（进度类：并集）
+          if (Array.isArray(rp.listenDone)) rp.listenDone.forEach(k => this.prep.listenDone.add(k));
+          if (Array.isArray(rp.readDone)) rp.readDone.forEach(k => this.prep.readDone.add(k));
+          if (rp.listenDoneAt && typeof rp.listenDoneAt === 'object') for (const [k, d] of Object.entries(rp.listenDoneAt)) if (!this.prep.listenDoneAt[k]) this.prep.listenDoneAt[k] = d;
+          if (rp.readDoneAt && typeof rp.readDoneAt === 'object') for (const [k, d] of Object.entries(rp.readDoneAt)) if (!this.prep.readDoneAt[k]) this.prep.readDoneAt[k] = d;
+          if (rp.diary && typeof rp.diary === 'object') Object.assign(this.prep.diary, rp.diary);
+          // 书籍范围（设置类：较新端优先）
+          if (remoteNewer) {
+            if (Array.isArray(rp.listenBooks) && rp.listenBooks.length) this.prep.listenBooks = rp.listenBooks;
+            if (Array.isArray(rp.readBooks) && rp.readBooks.length) this.prep.readBooks = rp.readBooks;
+          }
         }
         this._lastUpdatedAt = Math.max(localUpd, remoteUpd);
       }
