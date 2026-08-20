@@ -833,6 +833,9 @@ moist | 潮湿的 | moisture 潮气
         // 备考日记：今日自动统计 + 历史回看
         const todayDiary = p.diary[today] || {};
         const diaryHistory = Object.entries(p.diary).sort((a, b) => (a[0] < b[0] ? 1 : -1)).slice(0, 14);
+        const logHtml = (logs) => (Array.isArray(logs) && logs.length
+          ? logs.map(l => `<div class="mt-1.5 flex gap-1.5 text-[11px] text-gray-600 bg-white rounded-lg border border-gray-100 px-2 py-1.5"><span class="text-gray-400 flex-shrink-0">${l.t}</span><span>${l.text}</span></div>`).join('')
+          : '');
         const diaryRows = diaryHistory.map(([d, r]) => {
           const chips = [
             r.word ? `词 ${r.word}` : null,
@@ -841,9 +844,13 @@ moist | 潮湿的 | moisture 潮气
             r.write ? `写 ${r.write}篇` : null,
             r.speak ? `口 ${r.speak}次` : null
           ].filter(Boolean).join(' · ');
-          return `<div class="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
-            <span class="text-xs font-semibold text-gray-600 w-24 flex-shrink-0">${d}</span>
-            <span class="text-xs text-gray-500">${chips || '无记录'}</span>
+          const logs = [...(Array.isArray(r.writeLog) ? r.writeLog : []), ...(Array.isArray(r.speakLog) ? r.speakLog : [])];
+          return `<div class="py-1.5 border-b border-gray-50 last:border-0">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-semibold text-gray-600 w-24 flex-shrink-0">${d}</span>
+              <span class="text-xs text-gray-500">${chips || '无记录'}</span>
+            </div>
+            ${logs.length ? `<div class="mt-1 ml-24 space-y-0.5">${logs.map(l => `<div class="text-[11px] text-gray-400"><span class="text-gray-300">${l.t}</span> ${l.text}</div>`).join('')}</div>` : ''}
           </div>`;
         }).join('');
         const diaryBlock = `
@@ -858,7 +865,22 @@ moist | 潮湿的 | moisture 潮气
             ${todayDiary.speak ? `<span class="text-xs px-2 py-1 rounded-full bg-violet-50 text-violet-700">口语 ${todayDiary.speak} 次</span>` : ''}
             ${!todayDiary.word && !todayDiary.listen && !todayDiary.read && !todayDiary.write && !todayDiary.speak ? '<span class="text-xs text-gray-400">今天还没记录，开始背词 / 打卡吧</span>' : ''}
           </div>
-          <p class="text-[11px] text-gray-400 mb-3">每天工作量自动汇总：单词 = 今日背诵数；听力/阅读 = 今日打卡套数；写作/口语 = 今日任务勾选。历史记录如下（近 14 天）。</p>
+          <!-- 写作 / 口语 手动记录 -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1 mb-3">
+            <div class="rounded-xl border border-orange-100 bg-orange-50/40 p-3">
+              <div class="text-xs font-bold text-orange-700 mb-1.5">✍️ 写作 · 今天练了什么？</div>
+              <textarea id="diary-note-write" rows="2" placeholder="如：小作文图表1篇 + 大作文AI话题提纲，用时50分钟" class="w-full px-2.5 py-2 border border-orange-200 rounded-lg text-xs bg-white resize-none focus:outline-none focus:ring-1 focus:ring-orange-300"></textarea>
+              <button onclick="app.saveDiaryNote('write')" class="mt-1.5 px-3 py-1.5 text-xs font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg">保存到日记</button>
+              ${logHtml(todayDiary.writeLog)}
+            </div>
+            <div class="rounded-xl border border-violet-100 bg-violet-50/40 p-3">
+              <div class="text-xs font-bold text-violet-700 mb-1.5">🎤 口语 · 今天练了什么？</div>
+              <textarea id="diary-note-speak" rows="2" placeholder="如：Part2 串题2个 + 录音回听3遍，Part3 辩证框架1题" class="w-full px-2.5 py-2 border border-violet-200 rounded-lg text-xs bg-white resize-none focus:outline-none focus:ring-1 focus:ring-violet-300"></textarea>
+              <button onclick="app.saveDiaryNote('speak')" class="mt-1.5 px-3 py-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-700 rounded-lg">保存到日记</button>
+              ${logHtml(todayDiary.speakLog)}
+            </div>
+          </div>
+          <p class="text-[11px] text-gray-400 mb-3">每天工作量自动汇总：单词 = 今日背诵数；听力/阅读 = 今日打卡套数；写作/口语 = 今日任务勾选；写作/口语练了什么可在上方手动记录。历史记录如下（近 14 天）。</p>
           <div>${diaryRows || '<p class="text-xs text-gray-400">还没有历史记录</p>'}</div>
         </div>`;
 
@@ -941,6 +963,55 @@ moist | 潮湿的 | moisture 潮气
           </div>
         </div>`;
 
+        // 刷题计划建议：按剩余时间 + 专家优先级（精做 > 刷完）
+        const planBlock = (() => {
+          if (leftDays == null || leftDays <= 0) return '';
+          const d1 = Math.max(3, Math.round(leftDays * 0.38));
+          const d2 = Math.max(3, Math.round(leftDays * 0.38));
+          const d3 = Math.max(2, leftDays - d1 - d2);
+          const addDays = (n) => { const dt = new Date(); dt.setDate(dt.getDate() + n); return (dt.getMonth() + 1) + '/' + dt.getDate(); };
+          const cur = leftDays > d1 + d2 ? 0 : leftDays > d3 ? 1 : 2;
+          const stages = [
+            { name: '① 基础适应', span: `今天 - ${addDays(d1)}`, books: '剑11-15', tip: '每周 2-3 套，不限时→限时过渡；听力 1.25-1.5x 倍速磨耳；错题精听 / 精读复盘' },
+            { name: '② 强化模考', span: `${addDays(d1)} - ${addDays(d1 + d2)}`, books: '剑16-18', tip: '全真限时模考（听力一遍放完、阅读卡 60min）；每套复盘 1.5-2h，错题归因：定位 / 同义替换 / 逻辑' },
+            { name: '③ 考前冲刺', span: `${addDays(d1 + d2)} - 考试日`, books: '剑19-21', tip: '每 2-3 天一次听 + 读连考全真模考；剑21 留考前最后 1-2 周终极模考，难题不纠结' }
+          ];
+          const band = (arr, lo, hi) => arr.filter(b => b >= lo && b <= hi).length * 4;
+          const mustL = band(p.listenBooks, 16, 18) + (p.listenBooks.indexOf(21) >= 0 ? 4 : 0);
+          const mustR = band(p.readBooks, 16, 18) + (p.readBooks.indexOf(21) >= 0 ? 4 : 0);
+          const hiL = band(p.listenBooks, 19, 20), hiR = band(p.readBooks, 19, 20);
+          const selL = band(p.listenBooks, 11, 15), selR = band(p.readBooks, 11, 15);
+          const skipL = band(p.listenBooks, 9, 10);
+          const totalL = p.listenBooks.length * 4, totalR = p.readBooks.length * 4;
+          return `
+          <div class="bg-white border border-gray-200 rounded-2xl p-5">
+            <div class="flex items-center justify-between gap-2 flex-wrap mb-2">
+              <h3 class="text-sm font-bold text-gray-700">📋 刷题计划 · 按剩余 ${leftDays} 天</h3>
+              <span class="text-[10px] text-gray-400">专家建议：精做 &gt; 刷完，质量优先</span>
+            </div>
+            <div class="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5 mb-3">
+              <p class="text-xs text-amber-800 leading-relaxed">${totalL + totalR} 套（听 ${totalL} + 读 ${totalR}）<b>全刷完不现实</b>：需要每天听 + 读各 1 套且几乎无休。按优先级精做 <b>约 ${mustL + mustR + hiL + hiR} 套起步</b>（每科 24 套）就足以冲 7.5，关键是每套错题复盘到位，而不是追求刷完。</p>
+            </div>
+            <div class="space-y-2 mb-3">${stages.map((s, i) => `
+              <div class="rounded-xl border p-3 ${i === cur ? 'border-indigo-200 bg-indigo-50/60' : 'border-gray-100 bg-gray-50/50'}">
+                <div class="flex items-center gap-2 flex-wrap mb-0.5">
+                  <span class="text-xs font-bold ${i === cur ? 'text-indigo-700' : 'text-gray-500'}">${s.name}</span>
+                  <span class="text-[10px] text-gray-400">${s.span}</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded-full ${i === cur ? 'bg-indigo-600 text-white font-semibold' : 'bg-gray-200 text-gray-500'}">${s.books}</span>
+                  ${i === cur ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-white text-indigo-600 font-semibold border border-indigo-200">当前阶段</span>' : ''}
+                </div>
+                <p class="text-[11px] ${i === cur ? 'text-indigo-900' : 'text-gray-500'}">${s.tip}</p>
+              </div>`).join('')}</div>
+            <div class="text-[11px] text-gray-600 space-y-1">
+              <p><span class="text-red-500 font-bold">🔴 必刷 · 提分主力</span> 剑16-18 + 剑21（听 ${mustL} 套 / 读 ${mustR} 套）— 最接近当前考情，错题必须复盘</p>
+              <p><span class="text-orange-500 font-bold">🟠 高优先 · 考前手感</span> 剑19-20（听 ${hiL} / 读 ${hiR}）— 留冲刺段全真模考</p>
+              <p><span class="text-yellow-600 font-bold">🟡 选刷 · 时间富余再刷</span> 剑11-15（听 ${selL} / 读 ${selR}）— 基础适应期挑着做，做不完没关系</p>
+              ${skipL ? `<p><span class="text-gray-400 font-bold">⚪ 可跳过</span> 剑9-10（听 ${skipL}）— 旧题，时间不够别碰</p>` : ''}
+            </div>
+            <p class="text-[11px] text-gray-500 mt-3 border-t border-gray-100 pt-2">⏱ 每日节奏建议：听力 1 套（做题 30min + 精听错题）+ 阅读 1 套（卡时 60min + 复盘）≈ 2.5-3h；每周至少留 1 天只复盘错题、不刷新题。当天任务看上方「今日任务」清单。</p>
+          </div>`;
+        })();
+
         content.innerHTML = `
           <!-- 倒计时 + 目标 -->
           <div class="bg-white border border-gray-200 rounded-2xl p-5">
@@ -965,6 +1036,9 @@ moist | 潮湿的 | moisture 潮气
 
           <!-- 真题打卡（剑号 × Test 打勾） -->
           ${testBoard}
+
+          <!-- 刷题计划建议（按剩余时间 + 优先级） -->
+          ${planBlock}
 
           ${settingsPanel}
 
@@ -1026,13 +1100,35 @@ moist | 潮湿的 | moisture 潮气
         const today = this.todayStr();
         const done = this.prep.daily[today] || {};
         const countToday = (at) => Object.values(at || {}).filter(d => d === today).length;
+        const prev = this.prep.diary[today] || {};
         this.prep.diary[today] = {
           word: this.todayRecitedCount(),
           listen: countToday(this.prep.listenDoneAt),
           read: countToday(this.prep.readDoneAt),
           write: done.write ? 1 : 0,
-          speak: done.speak ? 1 : 0
+          speak: done.speak ? 1 : 0,
+          writeLog: prev.writeLog || [],
+          speakLog: prev.speakLog || []
         };
+      }
+
+      // 备考日记：写作/口语手动记录（输入框 → 保存到今日日记）
+      saveDiaryNote(kind) {
+        const today = this.todayStr();
+        const el = document.getElementById('diary-note-' + kind);
+        if (!el) return;
+        const text = (el.value || '').trim();
+        if (!text) { this.showToast('先写点内容再保存'); return; }
+        const key = kind === 'write' ? 'writeLog' : 'speakLog';
+        const prev = this.prep.diary[today] || {};
+        const logs = Array.isArray(prev[key]) ? prev[key].slice() : [];
+        logs.push({ t: this.nowHM(), text });
+        this.prep.diary[today] = Object.assign({}, prev, { [key]: logs });
+        el.value = '';
+        this.updateDiaryToday(); // 保留 writeLog/speakLog 并刷新自动数字
+        this.savePrep();
+        this.renderPrep();
+        this.showToast('已记入今日备考日记');
       }
 
       buildBookRange(from, to) {
