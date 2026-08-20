@@ -1343,6 +1343,7 @@ moist | 潮湿的 | moisture 潮气
 
       exportRecite() {
         const data = JSON.stringify({
+          words: this.state.words,
           days: this.recite.days,
           startDate: this.recite.startDate,
           checked: [...this.recite.checked],
@@ -1367,7 +1368,7 @@ moist | 潮湿的 | moisture 潮气
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `背诵进度-${this.todayStr()}.json`;
+        a.download = `单词本全量备份-${this.todayStr()}.json`;
         a.click();
         URL.revokeObjectURL(url);
       }
@@ -1399,10 +1400,16 @@ moist | 潮湿的 | moisture 潮气
               if (typeof rp.speakingDone === 'number') this.prep.speakingDone = rp.speakingDone;
               this.prep.daily = Object.assign({}, this.prep.daily, rp.daily || {});
             }
+            if (Array.isArray(d.words)) {
+              this.state.words = d.words;
+              this.saveData();
+              this.renderCategories();
+              this.render();
+            }
             this.saveRecite();
             this.savePrep();
             this.renderCurrentView();
-            alert('进度导入成功');
+            alert(`导入成功：${Array.isArray(d.words) ? d.words.length : 0} 个单词 · 背诵 ${(d.checked || []).length} 词 · ${d.prep ? '备考设置' : '（无备考数据）'}`);
           } catch (err) {
             alert('导入失败：' + err.message);
           }
