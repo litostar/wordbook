@@ -285,7 +285,7 @@
             <div class="flex items-center gap-2">
               <span id="prep-countdown" class="text-xs px-2 py-1 rounded-full bg-indigo-50 text-indigo-700">距考试 -- 天</span>
               <button onclick="app.togglePrepSettings()" class="px-3 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
-                <i data-lucide="settings" class="w-4 h-4"></i><span>备考设置</span>
+                <i data-lucide="settings" class="w-4 h-4"></i><span id="prep-settings-btn-text">备考设置</span>
               </button>
             </div>
           </div>
@@ -728,6 +728,9 @@ moist | 潮湿的 | moisture 潮气
         const writeLeft = Math.max(0, p.writingGoal - p.writingDone);
         const today = this.todayStr();
         const done = p.daily[today] || {};
+        const plan = this.computePlan();
+        const perDay = plan.perDay;
+        const wordAutoDone = this.todayRecitedCount() >= perDay;
 
         // 头部倒计时
         const countdown = leftDays == null ? '未设置考试日期'
@@ -765,31 +768,35 @@ moist | 潮湿的 | moisture 潮气
 
         // 今日任务清单（剩余>0 才列出）
         const taskKeys = [];
-        const mk = (key, label, sub, icon) => {
+        const mk = (key, label, sub, icon, auto) => {
           taskKeys.push(key);
-          const on = !!done[key];
-          tasks.push(`<button type="button" onclick="app.togglePrepTask('${key}')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-colors ${on ? 'border-green-300 bg-green-50/60' : 'border-gray-200 bg-white hover:border-indigo-300'}">
+          const on = !!done[key] || !!auto;
+          const clickable = !auto;
+          tasks.push(`<button type="button" ${clickable ? `onclick="app.togglePrepTask('${key}')"` : 'disabled'} class="w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-colors ${on ? 'border-green-300 bg-green-50/60' : 'border-gray-200 bg-white hover:border-indigo-300'} ${auto ? 'cursor-default opacity-90' : ''}">
             <span class="flex-shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center text-xs font-bold ${on ? 'border-green-500 bg-green-500 text-white' : 'border-gray-300 text-transparent'}">✓</span>
             <div class="flex-1 min-w-0">
               <div class="text-sm font-medium ${on ? 'text-green-700 line-through' : 'text-gray-800'}">${label}</div>
               ${sub ? `<div class="text-xs text-gray-400 mt-0.5">${sub}</div>` : ''}
             </div>
-            <i data-lucide="${icon}" class="w-4 h-4 ${on ? 'text-green-600' : 'text-gray-400'}"></i>
+            ${auto ? '<span class="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold">自动完成</span>' : `<i data-lucide="${icon}" class="w-4 h-4 ${on ? 'text-green-600' : 'text-gray-400'}"></i>`}
           </button>`);
         };
         const tasks = [];
-        if (wordLeft > 0) mk('word', `背单词 ${wordPerDay} 词`, `剩余 ${wordLeft} 词 · 剩 ${leftDays} 天`, 'book-open');
+        if (wordLeft > 0) mk('word',
+          wordAutoDone ? '背单词' : `背单词 ${wordPerDay} 词`,
+          wordAutoDone ? `今日已背 ${this.todayRecitedCount()} / ${perDay} 词 · 背诵达标，自动完成 ✓` : `剩余 ${wordLeft} 词 · 剩 ${leftDays} 天`,
+          'book-open', wordAutoDone);
         if (listenLeft > 0) mk('listen', '听力：真题 1 套 · 倍速 1.2-1.5x 精听', `剩余 ${listenLeft} 套 · 没听出先放慢 0.5x 再看原文`, 'headphones');
         if (readLeft > 0) mk('read', '阅读：真题 1 套 · 平行阅读法', `剩余 ${readLeft} 套 · 控错 ≤10，先保正确率再提速`, 'glasses');
         if (speakLeft > 0) mk('speak', '口语：录音 1 次并回听', `剩余 ${speakLeft} 次 · 雅思哥录音，背通用素材+串题`, 'mic');
         if (writeLeft > 0) mk('write', '写作：1 篇', `剩余 ${writeLeft} 篇 · 目标每周 3 次；考前两周突击模板`, 'pen-tool');
-        const allDone = taskKeys.length > 0 && taskKeys.every(k => done[k]);
+        const allDone = taskKeys.length > 0 && taskKeys.every(k => done[k] || (k === 'word' && wordAutoDone));
         const taskHtml = tasks.join('');
 
         // 设置折叠面板
         const numInput = (id, val, extra) => `<input type="number" ${extra || ''} id="${id}" value="${val}" class="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">`;
         const settingsPanel = p.settingsOpen ? `
-        <div class="bg-white border border-gray-200 rounded-2xl p-5">
+        <div id="prep-settings-panel" class="bg-white border border-gray-200 rounded-2xl p-5">
           <h3 class="text-sm font-bold text-gray-700 mb-3">备考设置</h3>
           <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
             <label class="block col-span-2 md:col-span-4">
@@ -859,6 +866,8 @@ moist | 潮湿的 | moisture 潮气
             <div class="grid grid-cols-2 md:grid-cols-5 gap-3">${bars}</div>
           </div>
 
+          ${settingsPanel}
+
           <!-- 今日任务 -->
           <div class="bg-white border border-gray-200 rounded-2xl p-5">
             <div class="flex items-center justify-between mb-3">
@@ -870,16 +879,21 @@ moist | 潮湿的 | moisture 潮气
           </div>
 
           ${tips}
-          ${settingsPanel}
         `;
         const cd = document.getElementById('prep-countdown');
         if (cd) cd.textContent = leftDays == null ? '未设置日期' : '距考试 ' + leftDays + ' 天';
+        const btnTxt = document.getElementById('prep-settings-btn-text');
+        if (btnTxt) btnTxt.textContent = p.settingsOpen ? '收起设置' : '备考设置';
         lucide.createIcons();
       }
 
       togglePrepSettings() {
         this.prep.settingsOpen = !this.prep.settingsOpen;
         this.renderPrep();
+        if (this.prep.settingsOpen) {
+          const panel = document.getElementById('prep-settings-panel');
+          if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
       }
 
       togglePrepTask(key) {
