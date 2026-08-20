@@ -501,7 +501,8 @@ moist | 潮湿的 | moisture 潮气
           selectedDay: null,
           dayCloudOpen: false,
           marked: new Set(),
-          markedDoneCollapsed: true
+          markedDoneCollapsed: true,
+          checkedAt: {}
         };
         // 背诵视图入场动画只播一次（切到该视图时），避免每次勾选/展开重播导致页面"上下跳"
         this._reciteEntered = false;
@@ -575,6 +576,7 @@ moist | 潮湿的 | moisture 潮气
             this.recite.dayCloudOpen = !!d.dayCloudOpen;
             this.recite.marked = new Set(d.marked || []);
             this.recite.markedDoneCollapsed = d.markedDoneCollapsed !== false;
+            this.recite.checkedAt = d.checkedAt || {};
           } else {
             // 从 v1 迁移：保留计划参数（天数/开始日期），但 v1 的打卡是按索引存的，
             // 词表重新解析后索引失效，故打卡/回撤重置为空，避免错位。
@@ -602,7 +604,8 @@ moist | 潮湿的 | moisture 潮气
           selectedDay: this.recite.selectedDay,
           dayCloudOpen: this.recite.dayCloudOpen,
           marked: [...this.recite.marked],
-          markedDoneCollapsed: this.recite.markedDoneCollapsed
+          markedDoneCollapsed: this.recite.markedDoneCollapsed,
+          checkedAt: this.recite.checkedAt
         }));
         this.scheduleSyncPush();
       }
@@ -639,6 +642,28 @@ moist | 潮湿的 | moisture 潮气
 
       dayDoneCount(day) {
         return this.getDayWords(day).filter(w => this.recite.checked.has(w.word)).length;
+      }
+
+      // 今天背了多少词（不论来自计划哪一天或重点本）：按勾选时间戳统计
+      todayRecitedCount() {
+        const today = this.todayStr();
+        let n = 0;
+        for (const w in this.recite.checkedAt) if (this.recite.checkedAt[w] === today) n++;
+        return n;
+      }
+
+      // 连续打卡天数：从今天往前数，遇到"当天没背"即断开（今天还没背则从昨天起算）
+      streakDays() {
+        const dates = new Set(Object.values(this.recite.checkedAt));
+        if (dates.size === 0) return 0;
+        const d = new Date(); d.setHours(0,0,0,0);
+        let offset = dates.has(this.todayStr()) ? 0 : 1;
+        let streak = 0;
+        for (let guard = 0; guard < 3650; guard++) {
+          const dayStr = (() => { const x = new Date(d.getTime() - offset*86400000); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; })();
+          if (dates.has(dayStr)) { streak++; offset++; } else break;
+        }
+        return streak;
       }
 
       // 天数 chip 颜色：按完成进度给绿色色阶，选中用 indigo，今天保留 fire 标记
@@ -712,6 +737,8 @@ moist | 潮湿的 | moisture 潮气
         const done = selWords.filter(w => this.recite.checked.has(w.word));
         const recalledCount = toDo.filter(w => this.recite.recalled.has(w.word)).length;
         const allOpen = toDo.length > 0 && toDo.every(w => this.recite.reveal[w.word]);
+        const todayCount = this.todayRecitedCount();
+        const streak = this.streakDays();
 
         // 天数提示
         let dayHint = `今天：第 ${todayDay} 天 / 共 ${days} 天`;
@@ -749,6 +776,18 @@ moist | 潮湿的 | moisture 潮气
               <button onclick="app.saveRecitePlan()" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg">保存计划</button>
               <span id="recite-saved" class="text-xs text-green-600 opacity-0 transition-opacity flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5"></i>已保存</span>
             </div>
+          </div>
+
+          <!-- 每日进度（今天背了多少，不论来自计划哪一天或重点本） -->
+          <div class="bg-white border border-gray-200 rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm font-semibold text-gray-700">今日进度</span>
+              <span class="text-sm ${todayCount >= perDay ? 'text-green-600 font-semibold' : 'text-gray-500'}">${todayCount} / ${perDay} 词</span>
+            </div>
+            <div class="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+              <div class="h-full rounded-full transition-all ${todayCount >= perDay ? 'bg-green-500' : 'bg-indigo-600'}" style="width:${perDay ? Math.min(100, Math.round(todayCount/perDay*100)) : 0}%"></div>
+            </div>
+            <p class="text-xs text-gray-400 mt-2">${todayCount >= perDay ? '今日目标已达成 🎉' : '距今日目标还差 ' + Math.max(0, perDay - todayCount) + ' 词'} · 连续打卡 ${streak} 天</p>
           </div>
 
           <!-- 总体进度 -->
@@ -828,7 +867,7 @@ moist | 潮湿的 | moisture 潮气
         const done = all.filter(w => this.recite.checked.has(w.word));
         const allOpen = toDo.length > 0 && toDo.every(w => this.recite.reveal[w.word]);
         const stat = document.getElementById('marked-stat');
-        if (stat) stat.textContent = `重点 ${all.length} · 待复习 ${toDo.length}`;
+        if (stat) stat.textContent = `重点 ${all.length} · 待复习 ${toDo.length} · 今日 ${this.todayRecitedCount()}/${this.computePlan().perDay}`;
         content.innerHTML = `
           ${all.length === 0 ? `<div class="text-center text-sm text-gray-400 py-10">还没有标注重点词。在「背诵计划」里点单词右侧的 ★ 即可加入重点本。</div>` : ''}
           ${toDo.length ? `
@@ -942,6 +981,7 @@ moist | 潮湿的 | moisture 潮气
       toggleReciteCheck(word) {
         this.recite.checked.add(word);
         this.recite.recalled.delete(word);
+        this.recite.checkedAt[word] = this.todayStr();
         this.saveRecite();
         this.renderCurrentView();
         this.showUndo(word);
@@ -963,6 +1003,7 @@ moist | 潮湿的 | moisture 潮气
       undoLast() {
         if (this.undoIndex == null) return;
         this.recite.checked.delete(this.undoIndex);
+        delete this.recite.checkedAt[this.undoIndex];
         this.undoIndex = null;
         this.saveRecite();
         this.renderCurrentView();
@@ -973,6 +1014,7 @@ moist | 潮湿的 | moisture 潮气
 
       recallWord(word) {
         this.recite.checked.delete(word);
+        delete this.recite.checkedAt[word];
         this.recite.recalled.add(word);
         this.saveRecite();
         this.renderCurrentView();
@@ -991,6 +1033,7 @@ moist | 潮湿的 | moisture 潮气
           checked: [...this.recite.checked],
           recalled: [...this.recite.recalled],
           marked: [...this.recite.marked],
+          checkedAt: this.recite.checkedAt,
           selectedDay: this.recite.selectedDay
         }, null, 2);
         const blob = new Blob([data], { type: 'application/json' });
@@ -1014,6 +1057,7 @@ moist | 潮湿的 | moisture 潮气
             this.recite.checked = new Set(d.checked || []);
             this.recite.recalled = new Set(d.recalled || []);
             this.recite.marked = new Set(d.marked || []);
+            this.recite.checkedAt = d.checkedAt || {};
             this.recite.selectedDay = d.selectedDay || this.todayDayNum();
             this.saveRecite();
             this.renderRecite();
