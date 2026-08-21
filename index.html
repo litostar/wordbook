@@ -564,6 +564,7 @@ moist | 潮湿的 | moisture 潮气
         this.loadRecite();
         this.loadPrep();
         this._lastUpdatedAt = 0;
+        try { this._lastPushedFp = localStorage.getItem('wordbook_sync_fp') || null; } catch (e) { this._lastPushedFp = null; }
         if (this.syncEnabled()) {
           this.updateSyncStatus('同步中…', 'syncing');
           this.pullRecite();
@@ -1830,7 +1831,7 @@ moist | 潮湿的 | moisture 潮气
         }
         this.updateSyncStatus('同步中…', 'syncing');
         await this.pullRecite();
-        await this.pushRecite();
+        await this.pushRecite(true);
         this.showToast('✅ 已同步 ' + this.nowHM());
       }
 
@@ -1843,8 +1844,29 @@ moist | 潮湿的 | moisture 潮气
         this._toastTimer = setTimeout(() => el.classList.add('hidden'), 2500);
       }
 
-      async pushRecite() {
+      // 数据指纹：用于无变化时跳过推送，省流量
+      hashStr(s) {
+        let h = 5381;
+        for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+        return (h >>> 0).toString(16);
+      }
+      dataFingerprint() {
+        try { return this.hashStr(JSON.stringify(this.serializeRecite())); } catch (e) { return '0'; }
+      }
+      setPushedFp() {
+        this._lastPushedFp = this.dataFingerprint();
+        try { localStorage.setItem('wordbook_sync_fp', this._lastPushedFp); } catch (e) {}
+      }
+      async pushRecite(force) {
         if (!this.syncEnabled()) return;
+        // 去重：数据与上次推送一致则跳过，避免重复 GET+PUT 浪费流量
+        if (!force) {
+          const fp = this.dataFingerprint();
+          if (fp && fp === this._lastPushedFp) {
+            this.updateSyncStatus('已是最新', 'ok');
+            return;
+          }
+        }
         this.updateSyncStatus('同步中…', 'syncing');
         try {
           const c = this.loadSyncCfg();
@@ -1876,6 +1898,7 @@ moist | 潮湿的 | moisture 潮气
           if (res.status === 200 || res.status === 201) {
             this._lastUpdatedAt = new Date(now).getTime();
             this.updateSyncStatus('已同步 ' + this.nowHM(), 'ok');
+            this.setPushedFp();
           } else {
             this.updateSyncStatus('同步失败 ' + res.status, 'err');
           }
@@ -1892,6 +1915,7 @@ moist | 潮湿的 | moisture 潮气
           if (res.status !== 200) return;
           const j = await res.json();
           this.mergeRemote(JSON.parse(base64ToUtf8(j.content)));
+          this.setPushedFp();
           this.saveRecite();
           this.savePrep();
           if (this.view === 'recite') this.renderRecite();
