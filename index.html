@@ -749,7 +749,10 @@ moist | 潮湿的 | moisture 潮气
         const totalWords = (window.VOCAB_IELTS || []).length;
         const wordDone = this.recite.checked.size;
         const wordLeft = Math.max(0, totalWords - wordDone);
-        const wordPerDay = leftDays > 0 ? Math.ceil(wordLeft / leftDays) : wordLeft;
+        // 每日单词目标 = 背诵计划的每日词数（与背诵计划同步，例如调成 70 词/天则这里也是 70）
+        const plan = this.computePlan();
+        const perDay = plan.perDay;
+        const wordPerDay = perDay;
         const listenTotal = p.listenBooks.length * 4;
         const readTotal = p.readBooks.length * 4;
         const listenDoneCount = p.listenDone.size;
@@ -762,8 +765,6 @@ moist | 潮湿的 | moisture 潮气
         const writeLeft = Math.max(0, p.writingGoal - p.writingDone);
         const today = this.todayStr();
         const done = p.daily[today] || {};
-        const plan = this.computePlan();
-        const perDay = plan.perDay;
         const wordAutoDone = this.todayRecitedCount() >= perDay;
         this.updateDiaryToday();
 
