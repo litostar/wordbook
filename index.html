@@ -521,6 +521,7 @@ moist | 潮湿的 | moisture 潮气
           selectMode: false,
           selectedIds: new Set()
         };
+        this.deletedWordIds = new Set(); // 单词本删除墓碑，用于跨端同步删除
         this.bulkParsed = [];
         this.view = 'manage';
         this.recite = {
@@ -1581,6 +1582,7 @@ moist | 潮湿的 | moisture 潮气
       exportRecite() {
         const data = JSON.stringify({
           words: this.state.words,
+          deletedWordIds: Array.from(this.deletedWordIds),
           days: this.recite.days,
           startDate: this.recite.startDate,
           checked: [...this.recite.checked],
@@ -1656,6 +1658,11 @@ moist | 潮湿的 | moisture 潮气
               this.saveData();
               this.renderCategories();
               this.render();
+            }
+            if (Array.isArray(d.deletedWordIds)) {
+              d.deletedWordIds.forEach(id => { if (id) this.deletedWordIds.add(id); });
+              this.saveDeletedWords();
+              this.state.words = this.state.words.filter(w => !this.deletedWordIds.has(w.id));
             }
             this.saveRecite();
             this.savePrep();
@@ -1759,7 +1766,9 @@ moist | 潮湿的 | moisture 潮气
             speakingGoal: this.prep.speakingGoal,
             speakingDone: this.prep.speakingDone,
             daily: this.prep.daily
-          }
+          },
+          words: this.state.words,
+          deletedWordIds: Array.from(this.deletedWordIds)
         };
       }
 
@@ -1818,6 +1827,26 @@ moist | 潮湿的 | moisture 潮气
             if (Array.isArray(rp.listenBooks) && rp.listenBooks.length) this.prep.listenBooks = rp.listenBooks;
             if (Array.isArray(rp.readBooks) && rp.readBooks.length) this.prep.readBooks = rp.readBooks;
           }
+        }
+        // —— 单词本（按 id 并集 + 最后修改优先 + 墓碑删除）——
+        if (Array.isArray(remote.words)) {
+          const map = {};
+          this.state.words.forEach(w => { if (w && w.id) map[w.id] = w; });
+          remote.words.forEach(w => {
+            if (!w || !w.id) return;
+            const local = map[w.id];
+            const rw = w.updatedAt || w.createdAt || '0';
+            const lw = local ? (local.updatedAt || local.createdAt || '0') : '0';
+            if (!local || rw >= lw) map[w.id] = w; // 远程更新或新增则覆盖/加入
+          });
+          this.state.words = Object.keys(map).map(id => map[id]);
+        }
+        if (Array.isArray(remote.deletedWordIds)) {
+          remote.deletedWordIds.forEach(id => { if (id) this.deletedWordIds.add(id); });
+        }
+        // 应用墓碑：移除两端都已标记删除的词
+        if (this.deletedWordIds.size) {
+          this.state.words = this.state.words.filter(w => !this.deletedWordIds.has(w.id));
         }
         this._lastUpdatedAt = Math.max(localUpd, remoteUpd);
       }
@@ -1899,6 +1928,8 @@ moist | 潮湿的 | moisture 潮气
             this._lastUpdatedAt = new Date(now).getTime();
             this.updateSyncStatus('已同步 ' + this.nowHM(), 'ok');
             this.setPushedFp();
+            this.saveData();
+            this.saveDeletedWords();
           } else {
             this.updateSyncStatus('同步失败 ' + res.status, 'err');
           }
@@ -1918,6 +1949,8 @@ moist | 潮湿的 | moisture 潮气
           this.setPushedFp();
           this.saveRecite();
           this.savePrep();
+          this.saveData();
+          this.saveDeletedWords();
           if (this.view === 'recite') this.renderRecite();
           if (this.view === 'prep') this.renderPrep();
           this.updateSyncStatus('已同步 ' + this.nowHM(), 'ok');
@@ -2013,6 +2046,13 @@ moist | 潮湿的 | moisture 潮气
             this.state.words = [...DEFAULT_WORDS];
             this.saveData();
           }
+          // 加载删除墓碑（跨端同步删除用）
+          try {
+            const dr = localStorage.getItem('wordbook_deleted_words_v1');
+            if (dr) JSON.parse(dr).forEach(id => this.deletedWordIds.add(id));
+          } catch (e) {}
+          // 过滤掉已被删除的词（本地视图一致）
+          this.state.words = this.state.words.filter(w => !this.deletedWordIds.has(w.id));
         } catch (e) {
           this.state.words = [...DEFAULT_WORDS];
         }
@@ -2020,6 +2060,10 @@ moist | 潮湿的 | moisture 潮气
 
       saveData() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state.words));
+      }
+
+      saveDeletedWords() {
+        try { localStorage.setItem('wordbook_deleted_words_v1', JSON.stringify(Array.from(this.deletedWordIds))); } catch (e) {}
       }
 
       setCategory(cat) {
@@ -2193,10 +2237,12 @@ moist | 潮湿的 | moisture 潮气
           category,
           date,
           createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           mastered: false
         });
 
         this.saveData();
+        this.scheduleSyncPush();
         document.getElementById('input-word').value = '';
         document.getElementById('input-meaning').value = '';
         document.getElementById('input-note').value = '';
@@ -2428,12 +2474,14 @@ moist | 潮湿的 | moisture 潮气
             category,
             date,
             createdAt: new Date(Date.now() + i).toISOString(),
+            updatedAt: new Date(Date.now() + i).toISOString(),
             mastered: false
           });
         });
 
         const count = this.bulkParsed.length;
         this.saveData();
+        this.scheduleSyncPush();
         this.closeBulkImport();
         this.renderCategories();
         this.render();
@@ -2472,7 +2520,9 @@ moist | 潮湿的 | moisture 潮气
         w.meaning = document.getElementById('edit-meaning').value.trim();
         w.note = document.getElementById('edit-note').value.trim();
         w.date = document.getElementById('edit-date').value;
+        w.updatedAt = new Date().toISOString();
         this.saveData();
+        this.scheduleSyncPush();
         this.closeEditModal();
         this.renderCategories();
         this.render();
@@ -2480,8 +2530,11 @@ moist | 潮湿的 | moisture 潮气
 
       deleteCurrentWord() {
         if (!confirm('确定删除这个单词吗？')) return;
+        this.deletedWordIds.add(this.editingId);
         this.state.words = this.state.words.filter(x => x.id !== this.editingId);
         this.saveData();
+        this.saveDeletedWords();
+        this.scheduleSyncPush();
         this.closeEditModal();
         this.renderCategories();
         this.render();
@@ -2509,8 +2562,9 @@ moist | 潮湿的 | moisture 潮气
           try {
             const imported = JSON.parse(e.target.result);
             if (!Array.isArray(imported)) throw new Error('格式错误');
-            this.state.words = imported;
+            this.state.words = imported.filter(w => w && w.id && !this.deletedWordIds.has(w.id));
             this.saveData();
+            this.scheduleSyncPush();
             this.renderCategories();
             this.render();
             alert('导入成功');
