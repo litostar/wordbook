@@ -572,6 +572,12 @@ moist | 潮湿的 | moisture 潮气
         } else {
           this.updateSyncStatus('未启用云同步', 'idle');
         }
+        // 自动同步：切回页面/回到前台时拉取云端最新（不做定时轮询，空闲零流量）
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible' && this.syncEnabled()) {
+            this.pullRecite();
+          }
+        });
         this.init();
       }
 
@@ -1930,6 +1936,7 @@ moist | 潮湿的 | moisture 潮气
             this.setPushedFp();
             this.saveData();
             this.saveDeletedWords();
+            this.renderCurrentView();
           } else {
             this.updateSyncStatus('同步失败 ' + res.status, 'err');
           }
@@ -1951,8 +1958,8 @@ moist | 潮湿的 | moisture 潮气
           this.savePrep();
           this.saveData();
           this.saveDeletedWords();
-          if (this.view === 'recite') this.renderRecite();
-          if (this.view === 'prep') this.renderPrep();
+          // 关键修复：同步后重渲染「当前视图」（含单词本），否则手机端切到单词本看不到刚同步的词
+          this.renderCurrentView();
           this.updateSyncStatus('已同步 ' + this.nowHM(), 'ok');
         } catch (e) {
           // 拉取失败不阻断本地使用
