@@ -205,6 +205,17 @@
                 class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
             </div>
           </div>
+          <div class="w-full md:col-span-12">
+            <details class="rounded-lg border border-gray-200 bg-gray-50/50">
+              <summary class="cursor-pointer select-none px-3 py-2 text-sm font-medium text-gray-600">同义词辨析（可选）</summary>
+              <div class="space-y-2 px-3 pb-3 pt-1">
+                <div id="synonym-rows" class="space-y-2"></div>
+                <button type="button" onclick="app.addSynonymRow()" class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors">
+                  <i data-lucide="plus" class="w-3.5 h-3.5"></i><span>添加一条近义词</span>
+                </button>
+              </div>
+            </details>
+          </div>
           <button type="submit"
             class="w-full md:w-auto px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2">
             <i data-lucide="plus" class="w-4 h-4"></i>
@@ -360,6 +371,13 @@
         <div>
           <label class="block text-xs font-medium text-gray-500 mb-1">日期</label>
           <input type="date" id="edit-date" required class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">同义词辨析</label>
+          <div id="edit-synonym-rows" class="space-y-2"></div>
+          <button type="button" onclick="app.addEditSynonymRow()" class="mt-2 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i><span>添加近义词</span>
+          </button>
         </div>
         <div class="pt-2 flex gap-2">
           <button type="button" onclick="app.deleteCurrentWord()" class="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg">删除</button>
@@ -2185,6 +2203,7 @@ moist | 潮湿的 | moisture 潮气
                   </div>
                   <p class="text-sm text-gray-700">${this.escapeHtml(w.meaning)}</p>
                   ${w.note ? `<p class="text-xs text-gray-500 mt-1.5 line-clamp-2">${this.escapeHtml(w.note)}</p>` : ''}
+                  ${this.renderSynonyms(w)}
                 </div>
               </div>
             </div>
@@ -2205,6 +2224,7 @@ moist | 潮湿的 | moisture 潮气
                 </div>
                 <p class="text-sm text-gray-700">${this.escapeHtml(w.meaning)}</p>
                 ${w.note ? `<p class="text-xs text-gray-500 mt-1.5 line-clamp-2">${this.escapeHtml(w.note)}</p>` : ''}
+                ${this.renderSynonyms(w)}
               </div>
               <div class="flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                 <button type="button" onclick="event.stopPropagation(); app.toggleMastered('${w.id}')" class="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg" title="标记掌握">
@@ -2236,6 +2256,14 @@ moist | 潮湿的 | moisture 潮气
 
         if (!word || !meaning || !date) return;
 
+        // 读取同义词辨析（可选）
+        const synonyms = [];
+        document.querySelectorAll('#synonym-rows .syn-row').forEach(row => {
+          const sw = row.querySelector('.syn-word').value.trim();
+          const sm = row.querySelector('.syn-mean').value.trim();
+          if (sw) synonyms.push({ word: sw, meaning: sm });
+        });
+
         this.state.words.unshift({
           id: generateId(),
           word,
@@ -2243,6 +2271,7 @@ moist | 潮湿的 | moisture 潮气
           note,
           category,
           date,
+          synonyms,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           mastered: false
@@ -2253,8 +2282,54 @@ moist | 潮湿的 | moisture 潮气
         document.getElementById('input-word').value = '';
         document.getElementById('input-meaning').value = '';
         document.getElementById('input-note').value = '';
+        const synBox = document.getElementById('synonym-rows');
+        if (synBox) synBox.innerHTML = '';
         this.renderCategories();
         this.render();
+      }
+
+      addSynonymRow(word = '', meaning = '') {
+        const box = document.getElementById('synonym-rows');
+        if (!box) return;
+        const row = document.createElement('div');
+        row.className = 'syn-row flex gap-2 items-center';
+        row.innerHTML = `
+          <input type="text" class="syn-word flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="近义词（如 adapt）" autocomplete="off">
+          <input type="text" class="syn-mean flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="释义（如 适应）" autocomplete="off">
+          <button type="button" onclick="this.closest('.syn-row').remove()" class="flex-shrink-0 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg" title="删除此条"><i data-lucide="x" class="w-4 h-4"></i></button>
+        `;
+        box.appendChild(row);
+        if (word) row.querySelector('.syn-word').value = word;
+        if (meaning) row.querySelector('.syn-mean').value = meaning;
+        lucide.createIcons();
+      }
+
+      addEditSynonymRow(word = '', meaning = '') {
+        const box = document.getElementById('edit-synonym-rows');
+        if (!box) return;
+        const row = document.createElement('div');
+        row.className = 'syn-row flex gap-2 items-center';
+        row.innerHTML = `
+          <input type="text" class="syn-word flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="近义词（如 adapt）" autocomplete="off">
+          <input type="text" class="syn-mean flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="释义（如 适应）" autocomplete="off">
+          <button type="button" onclick="this.closest('.syn-row').remove()" class="flex-shrink-0 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg" title="删除此条"><i data-lucide="x" class="w-4 h-4"></i></button>
+        `;
+        box.appendChild(row);
+        if (word) row.querySelector('.syn-word').value = word;
+        if (meaning) row.querySelector('.syn-mean').value = meaning;
+        lucide.createIcons();
+      }
+
+      renderSynonyms(w) {
+        if (!w.synonyms || !w.synonyms.length) return '';
+        return `
+          <div class="mt-2 pt-2 border-t border-gray-100">
+            <div class="text-xs font-semibold text-gray-400 mb-1">同义词辨析</div>
+            <ul class="space-y-0.5">
+              ${w.synonyms.map(s => `<li class="text-xs text-gray-600"><span class="font-medium text-gray-700">${this.escapeHtml(s.word)}</span>${s.meaning ? ' · ' + this.escapeHtml(s.meaning) : ''}</li>`).join('')}
+            </ul>
+          </div>
+        `;
       }
 
       toggleMastered(id) {
@@ -2507,6 +2582,9 @@ moist | 潮湿的 | moisture 潮气
         document.getElementById('edit-meaning').value = w.meaning;
         document.getElementById('edit-note').value = w.note || '';
         document.getElementById('edit-date').value = w.date;
+        const ebox = document.getElementById('edit-synonym-rows');
+        if (ebox) ebox.innerHTML = '';
+        (w.synonyms || []).forEach(s => this.addEditSynonymRow(s.word, s.meaning));
         document.getElementById('edit-modal').classList.remove('hidden');
         document.getElementById('edit-modal').classList.add('flex');
         lucide.createIcons();
@@ -2527,6 +2605,13 @@ moist | 潮湿的 | moisture 潮气
         w.meaning = document.getElementById('edit-meaning').value.trim();
         w.note = document.getElementById('edit-note').value.trim();
         w.date = document.getElementById('edit-date').value;
+        const synonyms = [];
+        document.querySelectorAll('#edit-synonym-rows .syn-row').forEach(row => {
+          const sw = row.querySelector('.syn-word').value.trim();
+          const sm = row.querySelector('.syn-mean').value.trim();
+          if (sw) synonyms.push({ word: sw, meaning: sm });
+        });
+        w.synonyms = synonyms;
         w.updatedAt = new Date().toISOString();
         this.saveData();
         this.scheduleSyncPush();
