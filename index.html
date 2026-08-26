@@ -1412,15 +1412,14 @@ moist | 潮湿的 | moisture 潮气
         return this.getDayWords(day).filter(w => this.recite.checked.has(w.word)).length;
       }
 
-      // 今日进度：只统计「今天首次背下来」的词（不含当天回溯补签/复习旧词）
-      // 判定依据：checkedAt（首背日期）== 今天。回撤后重新勾选会刷新为首背日期。
+      // 今日进度：当天每勾选一个词，数字就加一；取消/撤销后数字减回。
       todayRecitedCount() {
         const today = this.todayStr();
         let n = 0;
         for (const w of this.recite.checked) {
-          const ts = this.recite.checkedTs[w];
-          const at = (ts && this.dateFromIso(ts)) || this.recite.checkedAt[w] || '';
-          if (at === today) n++;
+          const at = this.recite.checkedAt[w] || '';
+          const ts = this.recite.checkedTs[w] || '';
+          if (at === today || (ts && ts.slice(0, 10) === today)) n++;
         }
         return n;
       }
@@ -1756,13 +1755,9 @@ moist | 潮湿的 | moisture 潮气
         const wasChecked = this.recite.checked.has(word);
         this.recite.checked.add(word);
         this.recite.recalled.delete(word);
-        // 仅在「从未背过」（无首背时间/日期）时记录首背日期；
-        // 旧词回溯补签（已有首背日期）重新勾选不会刷新首背日期，不计入今日新背进度。
-        // 回撤/撤销会清除首背时间，之后重背视为重新学习，会计入当天。
-        if (!this.recite.checkedTs[word] && !this.recite.checkedAt[word]) {
-          this.recite.checkedTs[word] = now;
-          this.recite.checkedAt[word] = this.todayStr();
-        }
+        // 每次勾选都刷新为今天，保证「今日进度」实时 +1
+        this.recite.checkedTs[word] = now;
+        this.recite.checkedAt[word] = this.todayStr();
         delete this.recite.recalledAt[word];
         this.saveRecite();
         this.renderCurrentView();
