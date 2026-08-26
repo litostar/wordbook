@@ -457,7 +457,7 @@ moist | 潮湿的 | moisture 潮气
       <div class="p-5 space-y-4">
         <label class="flex items-center justify-between cursor-pointer">
           <span class="text-sm font-medium text-gray-700">启用云同步</span>
-          <input type="checkbox" id="sync-enabled" class="w-4 h-4 accent-indigo-600">
+          <input type="checkbox" id="sync-enabled" onchange="app.onToggleSync(this.checked)" class="w-4 h-4 accent-indigo-600">
         </label>
         <div>
           <label class="block text-xs font-medium text-gray-500 mb-1">GitHub Token（需 <code>repo</code> 权限，仅存于本机浏览器）</label>
@@ -2006,6 +2006,18 @@ moist | 潮湿的 | moisture 潮气
         if (aside) { aside.classList.add('-translate-x-full'); aside.classList.remove('translate-x-0'); }
         if (overlay) overlay.classList.add('hidden');
       }
+      // 勾选框即时响应：取消勾选 -> 立即关闭并保存；勾选 -> 需填 Token 后点「保存并测试」
+      onToggleSync(checked) {
+        const msg = document.getElementById('sync-msg');
+        if (!checked) {
+          const c = this.loadSyncCfg();
+          this.saveSyncCfg(Object.assign({}, c, { enabled: false }));
+          this.updateSyncStatus('未启用云同步', 'idle');
+          if (msg) msg.innerHTML = '<span class="text-gray-500">已关闭自动同步（已保存）</span>';
+        } else {
+          if (msg) msg.innerHTML = '<span class="text-amber-600">请填写 Token 后点「保存并测试」以启用</span>';
+        }
+      }
       // 云同步设置弹窗
       openSync() {
         const c = this.loadSyncCfg();
@@ -2034,6 +2046,11 @@ moist | 潮湿的 | moisture 潮气
         const msg = document.getElementById('sync-msg');
         if (enabled && !token) { msg.innerHTML = '<span class="text-red-600">启用同步需要填写 Token</span>'; return; }
         this.saveSyncCfg({ enabled: enabled, token: token, owner: owner, repo: repo, path: 'recite_progress.json' });
+        if (!enabled) {
+          this.updateSyncStatus('未启用云同步', 'idle');
+          msg.innerHTML = '<span class="text-gray-500">已关闭自动同步（已保存）</span>';
+          return;
+        }
         msg.innerHTML = '<span class="text-gray-500">正在测试连接…</span>';
         try {
           await this.ensureSyncRepo();
