@@ -217,6 +217,17 @@
                 </div>
               </details>
             </div>
+            <div class="w-full">
+              <details class="rounded-lg border border-gray-200 bg-gray-50/50">
+                <summary class="cursor-pointer select-none px-3 py-2 text-sm font-medium text-gray-600">Paraphrase（可替换表达，可选）</summary>
+                <div class="space-y-2 px-3 pb-3 pt-1">
+                  <div id="paraphrase-rows" class="space-y-2"></div>
+                  <button type="button" onclick="app.addParaphraseRow()" class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i><span>添加一组可替换表达</span>
+                  </button>
+                </div>
+              </details>
+            </div>
           </div>
           <button type="submit"
             class="w-full md:w-auto px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 md:self-start">
@@ -379,6 +390,13 @@
           <div id="edit-synonym-rows" class="space-y-2"></div>
           <button type="button" onclick="app.addEditSynonymRow()" class="mt-2 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors">
             <i data-lucide="plus" class="w-3.5 h-3.5"></i><span>添加近义词</span>
+          </button>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">Paraphrase（可替换表达）</label>
+          <div id="edit-paraphrase-rows" class="space-y-2"></div>
+          <button type="button" onclick="app.addEditParaphraseRow()" class="mt-2 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i><span>添加一组可替换表达</span>
           </button>
         </div>
         <div class="pt-2 flex gap-2">
@@ -2487,6 +2505,7 @@ moist | 潮湿的 | moisture 潮气
                   <p class="text-sm text-gray-700">${this.escapeHtml(w.meaning)}</p>
                   ${w.note ? `<p class="text-xs text-gray-500 mt-1.5 line-clamp-2">${this.escapeHtml(w.note)}</p>` : ''}
                   ${this.renderSynonyms(w)}
+                  ${this.renderParaphrases(w)}
                 </div>
               </div>
             </div>
@@ -2508,6 +2527,7 @@ moist | 潮湿的 | moisture 潮气
                 <p class="text-sm text-gray-700">${this.escapeHtml(w.meaning)}</p>
                 ${w.note ? `<p class="text-xs text-gray-500 mt-1.5 line-clamp-2">${this.escapeHtml(w.note)}</p>` : ''}
                 ${this.renderSynonyms(w)}
+                ${this.renderParaphrases(w)}
               </div>
               <div class="flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                 <button type="button" onclick="event.stopPropagation(); app.toggleMastered('${w.id}')" class="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg" title="标记掌握">
@@ -2547,6 +2567,14 @@ moist | 潮湿的 | moisture 潮气
           if (sw) synonyms.push({ word: sw, meaning: sm });
         });
 
+        // 读取 Paraphrase（可选）
+        const paraphrases = [];
+        document.querySelectorAll('#paraphrase-rows .para-row').forEach(row => {
+          const pa = row.querySelector('.para-a').value.trim();
+          const pb = row.querySelector('.para-b').value.trim();
+          if (pa || pb) paraphrases.push({ a: pa, b: pb });
+        });
+
         this.state.words.unshift({
           id: generateId(),
           word,
@@ -2555,6 +2583,7 @@ moist | 潮湿的 | moisture 潮气
           category,
           date,
           synonyms,
+          paraphrases,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           mastered: false
@@ -2567,6 +2596,8 @@ moist | 潮湿的 | moisture 潮气
         document.getElementById('input-note').value = '';
         const synBox = document.getElementById('synonym-rows');
         if (synBox) synBox.innerHTML = '';
+        const paraBox = document.getElementById('paraphrase-rows');
+        if (paraBox) paraBox.innerHTML = '';
         this.renderCategories();
         this.render();
       }
@@ -2610,6 +2641,52 @@ moist | 潮湿的 | moisture 潮气
             <div class="text-xs font-semibold text-gray-400 mb-1">同义词辨析</div>
             <ul class="space-y-0.5">
               ${w.synonyms.map(s => `<li class="text-xs text-gray-600"><span class="font-medium text-gray-700">${this.escapeHtml(s.word)}</span>${s.meaning ? ' · ' + this.escapeHtml(s.meaning) : ''}</li>`).join('')}
+            </ul>
+          </div>
+        `;
+      }
+
+      addParaphraseRow(a = '', b = '') {
+        const box = document.getElementById('paraphrase-rows');
+        if (!box) return;
+        const row = document.createElement('div');
+        row.className = 'para-row flex gap-2 items-center';
+        row.innerHTML = `
+          <input type="text" class="para-a flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500" placeholder="表达 A（如 big）" autocomplete="off">
+          <span class="text-xs text-gray-400 font-medium">↔</span>
+          <input type="text" class="para-b flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500" placeholder="表达 B（如 large）" autocomplete="off">
+          <button type="button" onclick="this.closest('.para-row').remove()" class="flex-shrink-0 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg" title="删除此组"><i data-lucide="x" class="w-4 h-4"></i></button>
+        `;
+        box.appendChild(row);
+        if (a) row.querySelector('.para-a').value = a;
+        if (b) row.querySelector('.para-b').value = b;
+        lucide.createIcons();
+      }
+
+      addEditParaphraseRow(a = '', b = '') {
+        const box = document.getElementById('edit-paraphrase-rows');
+        if (!box) return;
+        const row = document.createElement('div');
+        row.className = 'para-row flex gap-2 items-center';
+        row.innerHTML = `
+          <input type="text" class="para-a flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500" placeholder="表达 A（如 big）" autocomplete="off">
+          <span class="text-xs text-gray-400 font-medium">↔</span>
+          <input type="text" class="para-b flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500" placeholder="表达 B（如 large）" autocomplete="off">
+          <button type="button" onclick="this.closest('.para-row').remove()" class="flex-shrink-0 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg" title="删除此组"><i data-lucide="x" class="w-4 h-4"></i></button>
+        `;
+        box.appendChild(row);
+        if (a) row.querySelector('.para-a').value = a;
+        if (b) row.querySelector('.para-b').value = b;
+        lucide.createIcons();
+      }
+
+      renderParaphrases(w) {
+        if (!w.paraphrases || !w.paraphrases.length) return '';
+        return `
+          <div class="mt-2 pt-2 border-t border-gray-100">
+            <div class="text-xs font-semibold text-gray-400 mb-1">Paraphrase</div>
+            <ul class="space-y-0.5">
+              ${w.paraphrases.map(p => `<li class="text-xs text-gray-600"><span class="font-medium text-amber-700">${this.escapeHtml(p.a || '')}</span><span class="text-gray-400 mx-1">↔</span><span class="font-medium text-amber-700">${this.escapeHtml(p.b || '')}</span></li>`).join('')}
             </ul>
           </div>
         `;
@@ -2868,6 +2945,9 @@ moist | 潮湿的 | moisture 潮气
         const ebox = document.getElementById('edit-synonym-rows');
         if (ebox) ebox.innerHTML = '';
         (w.synonyms || []).forEach(s => this.addEditSynonymRow(s.word, s.meaning));
+        const eparabox = document.getElementById('edit-paraphrase-rows');
+        if (eparabox) eparabox.innerHTML = '';
+        (w.paraphrases || []).forEach(p => this.addEditParaphraseRow(p.a, p.b));
         document.getElementById('edit-modal').classList.remove('hidden');
         document.getElementById('edit-modal').classList.add('flex');
         lucide.createIcons();
@@ -2895,6 +2975,15 @@ moist | 潮湿的 | moisture 潮气
           if (sw) synonyms.push({ word: sw, meaning: sm });
         });
         w.synonyms = synonyms;
+
+        const paraphrases = [];
+        document.querySelectorAll('#edit-paraphrase-rows .para-row').forEach(row => {
+          const pa = row.querySelector('.para-a').value.trim();
+          const pb = row.querySelector('.para-b').value.trim();
+          if (pa || pb) paraphrases.push({ a: pa, b: pb });
+        });
+        w.paraphrases = paraphrases;
+
         w.updatedAt = new Date().toISOString();
         this.saveData();
         this.scheduleSyncPush();
