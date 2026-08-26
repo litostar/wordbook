@@ -181,11 +181,11 @@
           <div class="flex-1 flex flex-col gap-3 w-full">
             <div class="grid grid-cols-1 md:grid-cols-12 gap-3 w-full">
               <div class="md:col-span-3">
-                <input type="text" id="input-word" required placeholder="单词 / 短语" autocomplete="off"
+                <input type="text" id="input-word" placeholder="单词 / 短语（或从 Paraphrase 自动填充）" autocomplete="off"
                   class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
               </div>
               <div class="md:col-span-3">
-                <input type="text" id="input-meaning" required placeholder="释义" autocomplete="off"
+                <input type="text" id="input-meaning" placeholder="释义（或从 Paraphrase 自动填充）" autocomplete="off"
                   class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
               </div>
               <div class="md:col-span-2">
@@ -1412,15 +1412,9 @@ moist | 潮湿的 | moisture 潮气
         return this.getDayWords(day).filter(w => this.recite.checked.has(w.word)).length;
       }
 
-      // 今天背了多少词（不论来自计划哪一天或重点本）：按勾选时间戳统计
+      // 今日进度：只统计「今天背诵计划」里已完成的新词（复习/回溯旧词属于以往计划，不计入）
       todayRecitedCount() {
-        const today = this.todayStr();
-        let n = 0;
-        for (const w in this.recite.checkedAt) {
-          const d = this.dateFromIso(this.recite.checkedAt[w]) || this.recite.checkedAt[w];
-          if (d === today) n++;
-        }
-        return n;
+        return this.dayDoneCount(this.todayDayNum());
       }
 
       // 连续打卡天数：从今天往前数，遇到"当天没背"即断开（今天还没背则从昨天起算）
@@ -2551,13 +2545,11 @@ moist | 潮湿的 | moisture 潮气
 
       addWord(e) {
         e.preventDefault();
-        const word = document.getElementById('input-word').value.trim();
-        const meaning = document.getElementById('input-meaning').value.trim();
+        let word = document.getElementById('input-word').value.trim();
+        let meaning = document.getElementById('input-meaning').value.trim();
         const note = document.getElementById('input-note').value.trim();
         const date = document.getElementById('input-date').value;
         const category = document.getElementById('input-category').value;
-
-        if (!word || !meaning || !date) return;
 
         // 读取同义词辨析（可选）
         const synonyms = [];
@@ -2574,6 +2566,14 @@ moist | 潮湿的 | moisture 潮气
           const pb = row.querySelector('.para-b').value.trim();
           if (pa || pb) paraphrases.push({ a: pa, b: pb });
         });
+
+        // Paraphrase 可以单独成条：未填主词时，用第一组 Paraphrase 自动补全
+        if (!word && paraphrases.length) {
+          word = paraphrases[0].a;
+          meaning = paraphrases[0].b;
+        }
+
+        if (!word || !meaning || !date) return;
 
         this.state.words.unshift({
           id: generateId(),
