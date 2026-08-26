@@ -555,7 +555,9 @@ moist | 潮湿的 | moisture 潮气
           dayCloudOpen: false,
           marked: new Set(),
           markedDoneCollapsed: true,
-          checkedAt: {}
+          checkedAt: {},
+          checkedTs: {},
+          recalledAt: {}
         };
         this.prep = {
           examDate: '2026-10-15',
@@ -669,6 +671,8 @@ moist | 潮湿的 | moisture 潮气
             this.recite.marked = new Set(d.marked || []);
             this.recite.markedDoneCollapsed = d.markedDoneCollapsed !== false;
             this.recite.checkedAt = d.checkedAt || {};
+            this.recite.checkedTs = d.checkedTs || {};
+            this.recite.recalledAt = d.recalledAt || {};
           } else {
             // 从 v1 迁移：保留计划参数（天数/开始日期），但 v1 的打卡是按索引存的，
             // 词表重新解析后索引失效，故打卡/回撤重置为空，避免错位。
@@ -697,7 +701,9 @@ moist | 潮湿的 | moisture 潮气
           dayCloudOpen: this.recite.dayCloudOpen,
           marked: [...this.recite.marked],
           markedDoneCollapsed: this.recite.markedDoneCollapsed,
-          checkedAt: this.recite.checkedAt
+          checkedAt: this.recite.checkedAt,
+          checkedTs: this.recite.checkedTs,
+          recalledAt: this.recite.recalledAt
         }));
         this.scheduleSyncPush();
       }
@@ -1392,13 +1398,16 @@ moist | 潮湿的 | moisture 潮气
       todayRecitedCount() {
         const today = this.todayStr();
         let n = 0;
-        for (const w in this.recite.checkedAt) if (this.recite.checkedAt[w] === today) n++;
+        for (const w in this.recite.checkedAt) {
+          const d = this.dateFromIso(this.recite.checkedAt[w]) || this.recite.checkedAt[w];
+          if (d === today) n++;
+        }
         return n;
       }
 
       // 连续打卡天数：从今天往前数，遇到"当天没背"即断开（今天还没背则从昨天起算）
       streakDays() {
-        const dates = new Set(Object.values(this.recite.checkedAt));
+        const dates = new Set(Object.values(this.recite.checkedAt).map(v => this.dateFromIso(v) || v));
         if (dates.size === 0) return 0;
         const d = new Date(); d.setHours(0,0,0,0);
         let offset = dates.has(this.todayStr()) ? 0 : 1;
@@ -1723,9 +1732,12 @@ moist | 潮湿的 | moisture 潮气
       }
 
       toggleReciteCheck(word) {
+        const now = this.nowISO();
         this.recite.checked.add(word);
         this.recite.recalled.delete(word);
         this.recite.checkedAt[word] = this.todayStr();
+        this.recite.checkedTs[word] = now;
+        delete this.recite.recalledAt[word];
         this.saveRecite();
         this.renderCurrentView();
         this.showUndo(word);
@@ -1746,8 +1758,11 @@ moist | 潮湿的 | moisture 潮气
 
       undoLast() {
         if (this.undoIndex == null) return;
-        this.recite.checked.delete(this.undoIndex);
-        delete this.recite.checkedAt[this.undoIndex];
+        const w = this.undoIndex;
+        this.recite.checked.delete(w);
+        delete this.recite.checkedAt[w];
+        delete this.recite.checkedTs[w];
+        this.recite.recalledAt[w] = this.nowISO();
         this.undoIndex = null;
         this.saveRecite();
         this.renderCurrentView();
@@ -1759,7 +1774,9 @@ moist | 潮湿的 | moisture 潮气
       recallWord(word) {
         this.recite.checked.delete(word);
         delete this.recite.checkedAt[word];
+        delete this.recite.checkedTs[word];
         this.recite.recalled.add(word);
+        this.recite.recalledAt[word] = this.nowISO();
         this.saveRecite();
         this.renderCurrentView();
       }
@@ -1780,6 +1797,8 @@ moist | 潮湿的 | moisture 潮气
           recalled: [...this.recite.recalled],
           marked: [...this.recite.marked],
           checkedAt: this.recite.checkedAt,
+          checkedTs: this.recite.checkedTs,
+          recalledAt: this.recite.recalledAt,
           selectedDay: this.recite.selectedDay,
           prep: {
             examDate: this.prep.examDate,
@@ -1827,6 +1846,8 @@ moist | 潮湿的 | moisture 潮气
             this.recite.recalled = new Set(d.recalled || []);
             this.recite.marked = new Set(d.marked || []);
             this.recite.checkedAt = d.checkedAt || {};
+            this.recite.checkedTs = d.checkedTs || {};
+            this.recite.recalledAt = d.recalledAt || {};
             this.recite.selectedDay = d.selectedDay || this.todayDayNum();
             if (d.prep) {
               const rp = d.prep;
@@ -1903,6 +1924,14 @@ moist | 潮湿的 | moisture 潮气
       nowISO() {
         return new Date().toISOString();
       }
+      dateFromIso(iso) {
+        if (!iso) return '';
+        try {
+          const d = new Date(iso);
+          if (isNaN(d.getTime())) return '';
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        } catch (e) { return ''; }
+      }
       updateSyncStatus(text, type) {
         const cls = { ok: 'bg-green-50 text-green-700', err: 'bg-red-50 text-red-700', idle: 'bg-gray-100 text-gray-500', syncing: 'bg-indigo-50 text-indigo-700' };
         const el = document.getElementById('sync-status');
@@ -1951,6 +1980,8 @@ moist | 潮湿的 | moisture 潮气
           recalled: Array.from(this.recite.recalled),
           marked: Array.from(this.recite.marked),
           checkedAt: this.recite.checkedAt,
+          checkedTs: this.recite.checkedTs,
+          recalledAt: this.recite.recalledAt,
           selectedDay: this.recite.selectedDay,
           prep: {
             examDate: this.prep.examDate,
@@ -1990,13 +2021,49 @@ moist | 潮湿的 | moisture 潮气
           if (!isNaN(t)) remoteUpd = t;
         }
         const remoteNewer = remoteUpd > localUpd;
-        // —— 背诵进度（并集，绝不回退）——
-        if (Array.isArray(remote.checked)) remote.checked.forEach(w => { this.recite.checked.add(w); this.recite.recalled.delete(w); });
-        if (Array.isArray(remote.recalled)) remote.recalled.forEach(w => { this.recite.recalled.add(w); this.recite.checked.delete(w); });
+        // —— 背诵进度：按每个词的时间戳「最后写入者胜」——
         if (Array.isArray(remote.marked)) remote.marked.forEach(w => this.recite.marked.add(w));
-        if (remote.checkedAt && typeof remote.checkedAt === 'object') {
-          for (const [w, dt] of Object.entries(remote.checkedAt)) {
-            if (!this.recite.checkedAt[w]) this.recite.checkedAt[w] = dt;
+        const remoteChecked = new Set(remote.checked || []);
+        const remoteRecalled = new Set(remote.recalled || []);
+        const remoteCheckedTs = remote.checkedTs || {};
+        const remoteRecalledAt = remote.recalledAt || {};
+        const remoteCheckedAt = remote.checkedAt || {};
+        const allWords = new Set([
+          ...this.recite.checked, ...this.recite.recalled,
+          ...remoteChecked, ...remoteRecalled,
+          ...Object.keys(this.recite.checkedTs), ...Object.keys(this.recite.recalledAt),
+          ...Object.keys(remoteCheckedTs), ...Object.keys(remoteRecalledAt)
+        ]);
+        const ts = (v) => { const t = v ? new Date(v).getTime() : 0; return isNaN(t) ? 0 : t; };
+        for (const w of allWords) {
+          const localCheckedTs = ts(this.recite.checkedTs[w]);
+          const localRecalledTs = ts(this.recite.recalledAt[w]);
+          const remoteCheckedTs_ = ts(remoteCheckedTs[w]);
+          const remoteRecalledTs_ = ts(remoteRecalledAt[w]);
+          const localLast = Math.max(localCheckedTs, localRecalledTs);
+          const remoteLast = Math.max(remoteCheckedTs_, remoteRecalledTs_);
+          if (remoteLast > localLast) {
+            if (remoteCheckedTs_ >= remoteRecalledTs_) {
+              this.recite.checked.add(w); this.recite.recalled.delete(w);
+              this.recite.checkedTs[w] = remoteCheckedTs[w];
+              this.recite.checkedAt[w] = this.dateFromIso(remoteCheckedTs[w]) || remoteCheckedAt[w] || this.todayStr();
+              delete this.recite.recalledAt[w];
+            } else {
+              this.recite.checked.delete(w); this.recite.recalled.add(w);
+              delete this.recite.checkedAt[w]; delete this.recite.checkedTs[w];
+              this.recite.recalledAt[w] = remoteRecalledAt[w];
+            }
+          } else if (remoteLast === localLast && remoteLast === 0) {
+            // 旧数据无时间戳：按成员关系兜底
+            if (remoteRecalled.has(w)) {
+              this.recite.checked.delete(w); this.recite.recalled.add(w);
+              delete this.recite.checkedAt[w]; delete this.recite.checkedTs[w];
+              if (remoteRecalledAt[w]) this.recite.recalledAt[w] = remoteRecalledAt[w];
+            } else if (remoteChecked.has(w)) {
+              this.recite.checked.add(w); this.recite.recalled.delete(w);
+              this.recite.checkedAt[w] = remoteCheckedAt[w] || this.recite.checkedAt[w] || this.todayStr();
+              if (remoteCheckedTs[w]) this.recite.checkedTs[w] = remoteCheckedTs[w];
+            }
           }
         }
         // —— 计划设置（天数/开始日/选中日）：较新端优先 ——
