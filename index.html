@@ -569,6 +569,10 @@ moist | 潮湿的 | moisture 潮气
           readDone: new Set(),
           listenDoneAt: {},
           readDoneAt: {},
+          listenUndoneAt: {},
+          readUndoneAt: {},
+          listenExpanded: {},
+          readExpanded: {},
           diary: {},
           writingGoal: 24,
           writingDone: 0,
@@ -716,11 +720,17 @@ moist | 潮湿的 | moisture 潮气
             this.prep.daily = d.daily || {};
             if (Array.isArray(d.listenBooks) && d.listenBooks.length) this.prep.listenBooks = d.listenBooks;
             if (Array.isArray(d.readBooks) && d.readBooks.length) this.prep.readBooks = d.readBooks;
-            this.prep.listenDone = new Set(d.listenDone || []);
-            this.prep.readDone = new Set(d.readDone || []);
-            this.prep.listenDoneAt = d.listenDoneAt || {};
-            this.prep.readDoneAt = d.readDoneAt || {};
+            this.prep.listenDone = new Set();
+            this.prep.readDone = new Set();
+            this.prep.listenDoneAt = {};
+            this.prep.readDoneAt = {};
+            this.prep.listenUndoneAt = d.listenUndoneAt || {};
+            this.prep.readUndoneAt = d.readUndoneAt || {};
+            this.prep.listenExpanded = d.listenExpanded || {};
+            this.prep.readExpanded = d.readExpanded || {};
             this.prep.diary = d.diary || {};
+            this.migratePrepDone(d.listenDone || [], d.listenDoneAt || {}, 'L');
+            this.migratePrepDone(d.readDone || [], d.readDoneAt || {}, 'R');
           }
         } catch (e) {}
       }
@@ -738,6 +748,10 @@ moist | 潮湿的 | moisture 潮气
           readDone: [...this.prep.readDone],
           listenDoneAt: this.prep.listenDoneAt,
           readDoneAt: this.prep.readDoneAt,
+          listenUndoneAt: this.prep.listenUndoneAt,
+          readUndoneAt: this.prep.readUndoneAt,
+          listenExpanded: this.prep.listenExpanded,
+          readExpanded: this.prep.readExpanded,
           diary: this.prep.diary,
           writingGoal: this.prep.writingGoal,
           writingDone: this.prep.writingDone,
@@ -748,6 +762,86 @@ moist | 潮湿的 | moisture 潮气
         this.scheduleSyncPush();
       }
 
+      migratePrepDone(list, atMap, kind) {
+        const secCount = kind === 'L' ? 4 : 3;
+        const set = kind === 'L' ? this.prep.listenDone : this.prep.readDone;
+        const newAt = kind === 'L' ? this.prep.listenDoneAt : this.prep.readDoneAt;
+        for (const key of list) {
+          const s = String(key);
+          const m = s.match(/^(L|R)-(\d+)-T([1-4])$/);
+          if (m) {
+            const [, k, b, t] = m;
+            const ts = atMap[s] || '2020-01-01';
+            for (let i = 1; i <= secCount; i++) {
+              const nk = `${k}-${b}-${t}-${i}`;
+              set.add(nk);
+              if (!newAt[nk]) newAt[nk] = ts;
+            }
+          } else {
+            set.add(s);
+            if (atMap[s] && !newAt[s]) newAt[s] = atMap[s];
+          }
+        }
+      }
+      // 按时间戳合并「完成/取消」状态：最后写入者胜；都无时间戳时取并集兜底
+      migrateRemotePrep(rp, kind) {
+        const secCount = kind === 'L' ? 4 : 3;
+        const doneKey = kind === 'L' ? 'listenDone' : 'readDone';
+        const atKey = kind === 'L' ? 'listenDoneAt' : 'readDoneAt';
+        const list = rp[doneKey];
+        const atMap = rp[atKey] || {};
+        if (!Array.isArray(list)) return;
+        const migrated = [];
+        const migratedAt = {};
+        for (const key of list) {
+          const s = String(key);
+          const m = s.match(/^(L|R)-(\d+)-T([1-4])$/);
+          if (m) {
+            const [, k, b, t] = m;
+            const ts = atMap[s] || '2020-01-01';
+            for (let i = 1; i <= secCount; i++) {
+              const nk = `${k}-${b}-${t}-${i}`;
+              migrated.push(nk);
+              if (!migratedAt[nk]) migratedAt[nk] = ts;
+            }
+          } else {
+            migrated.push(s);
+            if (atMap[s]) migratedAt[s] = atMap[s];
+          }
+        }
+        rp[doneKey] = migrated;
+        rp[atKey] = Object.assign({}, atMap, migratedAt);
+      }
+      mergeTimestampDone(localSet, localDoneAt, localUndoneAt, remoteDone, remoteDoneAt, remoteUndoneAt) {
+        const doneAt = remoteDoneAt || {};
+        const undoneAt = remoteUndoneAt || {};
+        const allKeys = new Set([
+          ...localSet,
+          ...(Array.isArray(remoteDone) ? remoteDone : []),
+          ...Object.keys(localDoneAt),
+          ...Object.keys(doneAt),
+          ...Object.keys(localUndoneAt),
+          ...Object.keys(undoneAt)
+        ]);
+        const ts = (v) => { const t = v ? new Date(v).getTime() : 0; return isNaN(t) ? 0 : t; };
+        for (const key of allKeys) {
+          const localDoneTs = ts(localDoneAt[key]);
+          const localUndoneTs = ts(localUndoneAt[key]);
+          const remoteDoneTs = ts(doneAt[key]);
+          const remoteUndoneTs = ts(undoneAt[key]);
+          const localLast = Math.max(localDoneTs, localUndoneTs);
+          const remoteLast = Math.max(remoteDoneTs, remoteUndoneTs);
+          const remoteHasDone = Array.isArray(remoteDone) && remoteDone.includes(key);
+          if (remoteLast > localLast) {
+            if (remoteDoneTs >= remoteUndoneTs) { localSet.add(key); }
+            else { localSet.delete(key); }
+            if (doneAt[key]) localDoneAt[key] = doneAt[key]; else delete localDoneAt[key];
+            if (undoneAt[key]) localUndoneAt[key] = undoneAt[key]; else delete localUndoneAt[key];
+          } else if (remoteLast === localLast && remoteLast === 0 && remoteHasDone && !localSet.has(key)) {
+            localSet.add(key);
+          }
+        }
+      }
       prepLeftDays() {
         if (!this.prep.examDate) return null;
         const exam = new Date(this.prep.examDate + 'T00:00:00');
@@ -781,8 +875,8 @@ moist | 潮湿的 | moisture 潮气
         const plan = this.computePlan();
         const perDay = plan.perDay;
         const wordPerDay = perDay;
-        const listenTotal = p.listenBooks.length * 4;
-        const readTotal = p.readBooks.length * 4;
+        const listenTotal = p.listenBooks.length * 4 * 4; // 每本书 4 Tests × 4 Sections
+        const readTotal = p.readBooks.length * 4 * 3;     // 每本书 4 Tests × 3 Passages
         const listenDoneCount = p.listenDone.size;
         const readDoneCount = p.readDone.size;
         const listenLeft = Math.max(0, listenTotal - listenDoneCount);
@@ -830,33 +924,70 @@ moist | 潮湿的 | moisture 潮气
           </div>`;
         }).join('');
 
-        // 真题打卡：按「剑号 × Test1-4」打勾（像背单词一样）
-        const testBoardHtml = (kind, label, books, done, accent) => {
+        // 真题打卡：按「剑号 × Test × Section/Passage」打勾
+        const sectionBoardHtml = (kind, label, books, accent) => {
+          const isL = kind === 'L';
+          const secCount = isL ? 4 : 3;
+          const secLabel = isL ? 'S' : 'P';
+          const expanded = isL ? this.prep.listenExpanded : this.prep.readExpanded;
+          const doneSet = isL ? this.prep.listenDone : this.prep.readDone;
           const rows = books.map(b => {
-            const tbtns = [1, 2, 3, 4].map(t => {
-              const k = `${kind}-${b}-T${t}`;
-              const on = done.has(k);
-              return `<button type="button" onclick="app.toggleTestDone('${kind}',${b},${t})" title="剑${b} Test${t}" class="px-2 py-1 rounded-md text-xs font-semibold border transition-colors ${on ? 'border-green-500 bg-green-500 text-white' : 'border-gray-200 bg-white text-gray-500 hover:border-green-400 hover:text-green-600'}">T${t}</button>`;
+            const testBlocks = [1, 2, 3, 4].map(t => {
+              const ek = `${b}-${t}`;
+              const isExpanded = !!expanded[ek];
+              const secKeys = Array.from({ length: secCount }, (_, i) => `${kind}-${b}-${t}-${i + 1}`);
+              const allDone = secKeys.every(k => doneSet.has(k));
+              const anyDone = secKeys.some(k => doneSet.has(k));
+              const testCls = allDone
+                ? 'border-green-500 bg-green-500 text-white'
+                : anyDone
+                ? 'border-green-400 bg-green-50 text-green-700'
+                : 'border-gray-200 bg-white text-gray-500 hover:border-green-400 hover:text-green-600';
+              const expandIcon = isExpanded ? 'chevron-up' : 'chevron-down';
+              const sectionBtns = isExpanded
+                ? `<div class="flex gap-1 mt-1">${secKeys.map((k, i) => {
+                    const on = doneSet.has(k);
+                    const cls = on
+                      ? 'border-green-500 bg-green-500 text-white'
+                      : 'border-gray-200 bg-white text-gray-500 hover:border-green-400 hover:text-green-600';
+                    const handler = isL ? `toggleListenSection(${b},${t},${i + 1})` : `toggleReadSection(${b},${t},${i + 1})`;
+                    return `<button type="button" onclick="app.${handler}" title="剑${b} Test${t} ${secLabel}${i + 1}" class="px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-colors ${cls}">${secLabel}${i + 1}</button>`;
+                  }).join('')}</div>`
+                : '';
+              return `
+                <div class="flex flex-col items-start">
+                  <div class="flex items-center gap-0.5">
+                    <button type="button" onclick="app.${isL ? 'toggleListenTest' : 'toggleReadTest'}(${b},${t})" title="剑${b} Test${t}（点我全选/取消整套）" class="px-2 py-1 rounded-md text-xs font-semibold border transition-colors ${testCls}">T${t}</button>
+                    <button type="button" onclick="app.toggleExpand('${kind}',${b},${t})" title="展开/收起小节" class="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100"><i data-lucide="${expandIcon}" class="w-3 h-3"></i></button>
+                  </div>
+                  ${sectionBtns}
+                </div>
+              `;
             }).join('');
-            const cnt = [1, 2, 3, 4].filter(t => done.has(`${kind}-${b}-T${t}`)).length;
-            return `<div class="flex items-center gap-2 py-1.5">
-              <span class="w-12 flex-shrink-0 text-xs font-bold text-gray-600">剑${b}</span>
-              <div class="flex gap-1.5 flex-wrap">${tbtns}</div>
-              <span class="ml-auto text-[10px] text-gray-400 flex-shrink-0">${cnt}/4</span>
+            const totalPerBook = 4 * secCount;
+            const cnt = Array.from({ length: totalPerBook }, (_, i) => `${kind}-${b}-${Math.floor(i / secCount) + 1}-${(i % secCount) + 1}`).filter(k => doneSet.has(k)).length;
+            return `<div class="py-2">
+              <div class="flex items-start gap-2">
+                <span class="w-12 flex-shrink-0 text-xs font-bold text-gray-600 pt-1.5">剑${b}</span>
+                <div class="flex gap-2 flex-wrap">${testBlocks}</div>
+                <span class="ml-auto text-[10px] text-gray-400 flex-shrink-0 pt-1.5">${cnt}/${totalPerBook}</span>
+              </div>
             </div>`;
           }).join('');
+          const unit = isL ? '小节' : '篇';
+          const total = books.length * 4 * secCount;
           return `<div class="bg-white border border-gray-200 rounded-2xl p-5">
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-bold text-gray-700">${label}</h3>
-              <span class="text-xs font-semibold px-2 py-1 rounded-full ${accent.bg} ${accent.fg}">${done.size}/${books.length * 4} 套</span>
+              <span class="text-xs font-semibold px-2 py-1 rounded-full ${accent.bg} ${accent.fg}">${doneSet.size}/${total} ${unit}</span>
             </div>
             <div class="divide-y divide-gray-50">${rows}</div>
-            <p class="text-[11px] text-gray-400 mt-2">点 T1-T4 打勾 = 练完这套；自动计入今日日记，并按剩余天数折算每日建议。</p>
+            <p class="text-[11px] text-gray-400 mt-2">点 T1-T4 全选/取消整套；点小箭头展开 ${secLabel}1-${secLabel}${secCount} 逐个打卡。取消后会记录时间戳，同步时以最后修改为准。</p>
           </div>`;
         };
         const testBoard = `<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          ${testBoardHtml('L', '🎧 听力真题 · 剑' + p.listenBooks[0] + '-' + p.listenBooks[p.listenBooks.length - 1], p.listenBooks, p.listenDone, { bg: 'bg-emerald-50', fg: 'text-emerald-700' })}
-          ${testBoardHtml('R', '📖 阅读真题 · 剑' + p.readBooks[0] + '-' + p.readBooks[p.readBooks.length - 1], p.readBooks, p.readDone, { bg: 'bg-sky-50', fg: 'text-sky-700' })}
+          ${sectionBoardHtml('L', '🎧 听力真题 · 剑' + p.listenBooks[0] + '-' + p.listenBooks[p.listenBooks.length - 1], p.listenBooks, { bg: 'bg-emerald-50', fg: 'text-emerald-700' })}
+          ${sectionBoardHtml('R', '📖 阅读真题 · 剑' + p.readBooks[0] + '-' + p.readBooks[p.readBooks.length - 1], p.readBooks, { bg: 'bg-sky-50', fg: 'text-sky-700' })}
         </div>`;
 
         // 备考日记：今日自动统计 + 历史回看
@@ -933,8 +1064,8 @@ moist | 潮湿的 | moisture 潮气
           wordAutoDone ? '背单词' : `背单词 ${wordPerDay} 词`,
           wordAutoDone ? `今日已背 ${this.todayRecitedCount()} / ${perDay} 词 · 背诵达标，自动完成 ✓` : `剩余 ${wordLeft} 词 · 剩 ${leftDays} 天`,
           'book-open', wordAutoDone);
-        if (listenLeft > 0) mk('listen', `听力：真题 ${listenPerDay} 套 · 倍速 1.2-1.5x 精听`, `剩余 ${listenLeft} 套 · 没听出先放慢 0.5x 再看原文`, 'headphones');
-        if (readLeft > 0) mk('read', `阅读：真题 ${readPerDay} 套 · 平行阅读法`, `剩余 ${readLeft} 套 · 控错 ≤10，先保正确率再提速`, 'glasses');
+        if (listenLeft > 0) mk('listen', `听力：真题 ${listenPerDay} 小节 · 倍速 1.2-1.5x 精听`, `剩余 ${listenLeft} 小节 · 没听出先放慢 0.5x 再看原文`, 'headphones');
+        if (readLeft > 0) mk('read', `阅读：真题 ${readPerDay} 篇 · 平行阅读法`, `剩余 ${readLeft} 篇 · 控错 ≤10，先保正确率再提速`, 'glasses');
         if (speakLeft > 0) mk('speak', '口语：录音 1 次并回听', `剩余 ${speakLeft} 次 · 雅思哥录音，背通用素材+串题`, 'mic');
         if (writeLeft > 0) mk('write', '写作：1 篇', `剩余 ${writeLeft} 篇 · 目标每周 3 次；考前两周突击模板`, 'pen-tool');
         const allDone = taskKeys.length > 0 && taskKeys.every(k => done[k] || (k === 'word' && wordAutoDone));
@@ -1111,24 +1242,58 @@ moist | 潮湿的 | moisture 潮气
         this.renderPrep();
       }
 
-      // 真题打卡：kind = 'L' 听力 / 'R' 阅读；book = 剑号；test = 1-4
-      toggleTestDone(kind, book, test) {
-        const key = kind + '-' + book + '-T' + test;
+      // 真题打卡：Test 级别全选/取消
+      toggleListenTest(book, test) { this.toggleTestAll('L', book, test, 4); }
+      toggleReadTest(book, test) { this.toggleTestAll('R', book, test, 3); }
+      toggleTestAll(kind, book, test, secCount) {
         const set = kind === 'L' ? this.prep.listenDone : this.prep.readDone;
-        const at = kind === 'L' ? this.prep.listenDoneAt : this.prep.readDoneAt;
-        const today = this.todayStr();
-        if (set.has(key)) { set.delete(key); delete at[key]; }
-        else { set.add(key); at[key] = today; }
+        const doneAt = kind === 'L' ? this.prep.listenDoneAt : this.prep.readDoneAt;
+        const undoneAt = kind === 'L' ? this.prep.listenUndoneAt : this.prep.readUndoneAt;
+        const keys = Array.from({ length: secCount }, (_, i) => `${kind}-${book}-${test}-${i + 1}`);
+        const allDone = keys.every(k => set.has(k));
+        const now = this.nowISO();
+        if (allDone) {
+          keys.forEach(k => { set.delete(k); delete doneAt[k]; undoneAt[k] = now; });
+        } else {
+          keys.forEach(k => { set.add(k); doneAt[k] = now; delete undoneAt[k]; });
+        }
         this.updateDiaryToday();
         this.savePrep();
         this.renderPrep();
       }
+      toggleListenSection(book, test, section) { this.toggleSection('L', book, test, section); }
+      toggleReadSection(book, test, section) { this.toggleSection('R', book, test, section); }
+      toggleSection(kind, book, test, section) {
+        const key = `${kind}-${book}-${test}-${section}`;
+        const set = kind === 'L' ? this.prep.listenDone : this.prep.readDone;
+        const doneAt = kind === 'L' ? this.prep.listenDoneAt : this.prep.readDoneAt;
+        const undoneAt = kind === 'L' ? this.prep.listenUndoneAt : this.prep.readUndoneAt;
+        const now = this.nowISO();
+        if (set.has(key)) {
+          set.delete(key);
+          delete doneAt[key];
+          undoneAt[key] = now;
+        } else {
+          set.add(key);
+          doneAt[key] = now;
+          delete undoneAt[key];
+        }
+        this.updateDiaryToday();
+        this.savePrep();
+        this.renderPrep();
+      }
+      toggleExpand(kind, book, test) {
+        const map = kind === 'L' ? this.prep.listenExpanded : this.prep.readExpanded;
+        const ek = `${book}-${test}`;
+        map[ek] = !map[ek];
+        this.renderPrep();
+      }
 
-      // 备考日记：把今天的工作量（背词/听读套数/写口）汇总进 diary[today]
+      // 备考日记：把今天的工作量（背词/听读小节/写口）汇总进 diary[today]
       updateDiaryToday() {
         const today = this.todayStr();
         const done = this.prep.daily[today] || {};
-        const countToday = (at) => Object.values(at || {}).filter(d => d === today).length;
+        const countToday = (at) => Object.values(at || {}).filter(ts => String(ts).slice(0, 10) === today).length;
         const prev = this.prep.diary[today] || {};
         this.prep.diary[today] = {
           word: this.todayRecitedCount(),
@@ -1628,6 +1793,10 @@ moist | 潮湿的 | moisture 潮气
             readDone: [...this.prep.readDone],
             listenDoneAt: this.prep.listenDoneAt,
             readDoneAt: this.prep.readDoneAt,
+            listenUndoneAt: this.prep.listenUndoneAt,
+            readUndoneAt: this.prep.readUndoneAt,
+            listenExpanded: this.prep.listenExpanded,
+            readExpanded: this.prep.readExpanded,
             diary: this.prep.diary,
             writingGoal: this.prep.writingGoal,
             writingDone: this.prep.writingDone,
@@ -1673,11 +1842,17 @@ moist | 潮湿的 | moisture 潮气
               this.prep.daily = Object.assign({}, this.prep.daily, rp.daily || {});
               if (Array.isArray(rp.listenBooks) && rp.listenBooks.length) this.prep.listenBooks = rp.listenBooks;
               if (Array.isArray(rp.readBooks) && rp.readBooks.length) this.prep.readBooks = rp.readBooks;
-              this.prep.listenDone = new Set(rp.listenDone || []);
-              this.prep.readDone = new Set(rp.readDone || []);
-              this.prep.listenDoneAt = Object.assign({}, this.prep.listenDoneAt, rp.listenDoneAt || {});
-              this.prep.readDoneAt = Object.assign({}, this.prep.readDoneAt, rp.readDoneAt || {});
+              this.prep.listenDone = new Set();
+              this.prep.readDone = new Set();
+              this.prep.listenDoneAt = {};
+              this.prep.readDoneAt = {};
+              this.prep.listenUndoneAt = Object.assign({}, this.prep.listenUndoneAt, rp.listenUndoneAt || {});
+              this.prep.readUndoneAt = Object.assign({}, this.prep.readUndoneAt, rp.readUndoneAt || {});
+              this.prep.listenExpanded = Object.assign({}, this.prep.listenExpanded, rp.listenExpanded || {});
+              this.prep.readExpanded = Object.assign({}, this.prep.readExpanded, rp.readExpanded || {});
               this.prep.diary = Object.assign({}, this.prep.diary, rp.diary || {});
+              this.migratePrepDone(rp.listenDone || [], rp.listenDoneAt || {}, 'L');
+              this.migratePrepDone(rp.readDone || [], rp.readDoneAt || {}, 'R');
             }
             if (Array.isArray(d.words)) {
               this.state.words = d.words;
@@ -1724,6 +1899,9 @@ moist | 潮湿的 | moisture 潮气
       nowHM() {
         const d = new Date();
         return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      }
+      nowISO() {
+        return new Date().toISOString();
       }
       updateSyncStatus(text, type) {
         const cls = { ok: 'bg-green-50 text-green-700', err: 'bg-red-50 text-red-700', idle: 'bg-gray-100 text-gray-500', syncing: 'bg-indigo-50 text-indigo-700' };
@@ -1786,6 +1964,10 @@ moist | 潮湿的 | moisture 潮气
             readDone: Array.from(this.prep.readDone),
             listenDoneAt: this.prep.listenDoneAt,
             readDoneAt: this.prep.readDoneAt,
+            listenUndoneAt: this.prep.listenUndoneAt,
+            readUndoneAt: this.prep.readUndoneAt,
+            listenExpanded: this.prep.listenExpanded,
+            readExpanded: this.prep.readExpanded,
             diary: this.prep.diary,
             writingGoal: this.prep.writingGoal,
             writingDone: this.prep.writingDone,
@@ -1826,6 +2008,9 @@ moist | 潮湿的 | moisture 潮气
         // —— 备考计划 ——
         if (remote.prep && typeof remote.prep === 'object') {
           const rp = remote.prep;
+          // 兼容旧版远程数据：把 L-9-T1 这种 Test 粒度展开为 L-9-1-1..4 小节粒度
+          this.migrateRemotePrep(rp, 'L');
+          this.migrateRemotePrep(rp, 'R');
           if (remoteNewer) {
             if (rp.examDate) this.prep.examDate = rp.examDate;
             this.prep.target = Object.assign({}, this.prep.target, rp.target || {});
@@ -1842,12 +2027,24 @@ moist | 潮湿的 | moisture 潮气
           if (typeof rp.writingDone === 'number') this.prep.writingDone = Math.max(this.prep.writingDone || 0, rp.writingDone);
           if (typeof rp.speakingDone === 'number') this.prep.speakingDone = Math.max(this.prep.speakingDone || 0, rp.speakingDone);
           if (rp.daily && typeof rp.daily === 'object') Object.assign(this.prep.daily, rp.daily);
-          // 真题打卡 + 日记（进度类：并集）
-          if (Array.isArray(rp.listenDone)) rp.listenDone.forEach(k => this.prep.listenDone.add(k));
-          if (Array.isArray(rp.readDone)) rp.readDone.forEach(k => this.prep.readDone.add(k));
-          if (rp.listenDoneAt && typeof rp.listenDoneAt === 'object') for (const [k, d] of Object.entries(rp.listenDoneAt)) if (!this.prep.listenDoneAt[k]) this.prep.listenDoneAt[k] = d;
-          if (rp.readDoneAt && typeof rp.readDoneAt === 'object') for (const [k, d] of Object.entries(rp.readDoneAt)) if (!this.prep.readDoneAt[k]) this.prep.readDoneAt[k] = d;
-          if (rp.diary && typeof rp.diary === 'object') Object.assign(this.prep.diary, rp.diary);
+          // 真题打卡：按每个小节的时间戳「最后写入者胜」
+          this.mergeTimestampDone(
+            this.prep.listenDone, this.prep.listenDoneAt, this.prep.listenUndoneAt,
+            rp.listenDone, rp.listenDoneAt, rp.listenUndoneAt
+          );
+          this.mergeTimestampDone(
+            this.prep.readDone, this.prep.readDoneAt, this.prep.readUndoneAt,
+            rp.readDone, rp.readDoneAt, rp.readUndoneAt
+          );
+          // 日记（较新端优先）
+          if (rp.diary && typeof rp.diary === 'object') {
+            for (const [day, entry] of Object.entries(rp.diary)) {
+              const local = this.prep.diary[day];
+              if (!local || (entry && entry.updatedAt && (!local.updatedAt || entry.updatedAt > local.updatedAt))) {
+                this.prep.diary[day] = Object.assign({}, local, entry);
+              }
+            }
+          }
           // 书籍范围（设置类：较新端优先）
           if (remoteNewer) {
             if (Array.isArray(rp.listenBooks) && rp.listenBooks.length) this.prep.listenBooks = rp.listenBooks;
